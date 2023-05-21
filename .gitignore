@@ -1,0 +1,6 @@
+.vs
+*.res
+*.exe
+*.pdb
+*.db
+*.ll
