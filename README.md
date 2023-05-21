@@ -2,6 +2,8 @@
 
 Portable, simple and fast installer for Visual Studio build tools.
 
+![Screenshot](screenshot.png)
+
 ## TODO
 
 * Rework the entire GUI completely by someone who know how it works, with screen scaling support, like wcap.
