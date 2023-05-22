@@ -14,4 +14,5 @@ Portable, simple and fast installer for Visual Studio build tools.
 ## Credits
 
 @mmozeiko - for the initial CLI Python [implementation](https://gist.github.com/mmozeiko/7f3162ec2988e81e56d5c4e22cde9977) of the tool
+
 @iamvfx - for helping me figure out WinHTTP
