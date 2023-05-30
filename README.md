@@ -2,6 +2,8 @@
 
 Portable, simple and fast installer for Visual Studio build tools.
 
+Download [latest release](https://github.com/Data-Oriented-House/PortableBuildTools/download/releases/latest/PortableBuildTools.exe).
+
 ![Screenshot](screenshot.png)
 
 ## TODO
