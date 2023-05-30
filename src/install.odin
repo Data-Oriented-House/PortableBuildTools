@@ -295,6 +295,8 @@ download_info :: proc(pipe: win32.HANDLE = nil, allocator := context.allocator) 
 
 	second_manifest_url: string
 	second_manifest_name: string
+	// NOTE: Seems that manifest reports the size wrong, unless I'm supposed to do some conversion or something.
+	// Thus, this is more of a suggestion, not an actual accurate size.
 	second_manifest_size: int
 	license_url: string
 	{
@@ -610,7 +612,10 @@ download_file :: proc(pipe: win32.HANDLE = nil, url, to: string, total_size: uin
 	}
 	defer os.close(fd)
 
+	out_buf := make([dynamic]byte, 8 * mem.Kilobyte)
+	defer delete(out_buf)
 	downloaded: uint
+	last_percentage: int
 	for {
 		chunk_size: win32.DWORD
 		if !winhttp.QueryDataAvailable(hrequest, &chunk_size) {
@@ -619,21 +624,24 @@ download_file :: proc(pipe: win32.HANDLE = nil, url, to: string, total_size: uin
 
 		if chunk_size <= 0 do break
 
-		out_buf := make([]byte, chunk_size)
-		defer delete(out_buf)
+		resize(&out_buf, cast(int)chunk_size)
 
 		dl: win32.DWORD
-		if winhttp.ReadData(hrequest, raw_data(out_buf), chunk_size, &dl) {
-			os.write(fd, out_buf)
-
-			if total_size > 0 {
-				downloaded += uint(dl)
-				percentage := int(f32(downloaded)/f32(total_size) * 100)
-				write_progress(pipe, .Normal, "", percentage)
-			}
-		} else {
+		if !winhttp.ReadData(hrequest, raw_data(out_buf), chunk_size, &dl) {
 			return false
 		}
+
+		os.write(fd, out_buf[:])
+		downloaded += uint(dl)
+		percentage := int(f32(downloaded)/f32(total_size) * 100)
+
+		// Skip if total_size is unknown; or percentage didn't change (to prevent progress bar flickering).
+		if total_size == 0 || last_percentage == percentage {
+			continue
+		}
+
+		last_percentage = percentage
+		write_progress(pipe, .Normal, "", percentage)
 	}
 
 	return true

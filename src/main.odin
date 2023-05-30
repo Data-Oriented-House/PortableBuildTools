@@ -17,7 +17,7 @@ import win32 "core:sys/windows"
 import wininfo "core:sys/info"
 
 when ODIN_OS == .Windows && ODIN_DEBUG {
-	import pdb "pdb-55cbd21" // https://github.com/DaseinPhaos/pdb
+	import pdb "pdb-154951d" // https://github.com/DaseinPhaos/pdb
 }
 
 L :: win32.L
@@ -214,23 +214,17 @@ show_main_page :: proc() {
 
 		widgets[.Install] = add_button_autow("Install", &layout, .Right)
 
-		checkbox_width := cast(int)win32.GetSystemMetrics(win32.SM_CXMENUCHECK)
-		checkbox_text := "I accept the"
-		text_w, _ := w.get_text_size(checkbox_text)
-		// Windows GUI be like
-		if wininfo.os_version.build[0] < 22000 {
-			text_w = int(f32(text_w * 9) / 10)
-		} else {
-			text_w = int(f32(text_w * 2) / 3)
-		}
-		checkbox_width += text_w
-		widgets[.AcceptLicense] = w.add_widget(.Check_Box, checkbox_text, rect_cut_left(&layout, checkbox_width))
+		// NOTE: Ideally I would like the text to be clickable as in other checkboxes;
+		// But unfortunately the size measurements Windows reports for text are completely randomized for some reason;
+		// So I settled on only having a checkbox clickable for consistent GUI.
+		// Consider this a feature: user needs to hit the checkbox exactly right to prove that he read the License!
+		checkbox_width := win32.GetSystemMetrics(win32.SM_CXMENUCHECK) + win32.GetSystemMetrics(win32.SM_CXEDGE)
+		widgets[.AcceptLicense] = w.add_widget(.Check_Box, "", rect_cut_left(&layout, cast(int)checkbox_width))
 		w.set_checkbox(widgets[.AcceptLicense], accept_license)
 
-		checkbox_height := cast(int)win32.GetSystemMetrics(win32.SM_CYMENUCHECK)
 		rect_cut_top(&layout, 4) // Align (kinda) the following text with the checkbox
 
-		license := strings.concatenate({`<a href="`, tools_info.license_url, `">License Agreement</a>`})
+		license := strings.concatenate({`I accept the <a href="`, tools_info.license_url, `">License Agreement</a>`})
 		lid = w.add_widget(.Link, license, layout)
 	}
 
@@ -473,7 +467,9 @@ can_access_folder :: proc(folder: string) -> (ok: bool) {
 		return
 	}
 
-	security := win32.PSECURITY_DESCRIPTOR(mem.alloc(auto_cast length))
+	// NOTE: Assume no allocation error
+	desc_mem, _ := mem.alloc(auto_cast length)
+	security := win32.PSECURITY_DESCRIPTOR(desc_mem)
 	if security == nil {
 		return
 	}
@@ -653,7 +649,7 @@ wnd_proc :: proc "stdcall" (winid: win32.HWND, msg: win32.UINT, wparam: win32.WP
 		win32.GetClientRect(winid, &rect)
 		win32.ClientToScreen(winid, &point)
 
-		window_rect   = {cast(int)pos.x, cast(int)pos.y, cast(int)pos.cx, cast(int)pos.cy}
+		window_rect = {cast(int)pos.x, cast(int)pos.y, cast(int)pos.cx, cast(int)pos.cy}
 		window_client = {cast(int)point.x, cast(int)point.y, cast(int)rect.right, cast(int)rect.bottom}
 
 	case win32.WM_NOTIFY: // link pressed (with click or Enter)
@@ -708,10 +704,10 @@ main :: proc() {
 
 	wc: win32.WNDCLASSW = {
 		lpszClassName = L(WINDOW_TITLE),
-		hInstance     = cast(win32.HINSTANCE)win32.GetModuleHandleW(nil),
+		hInstance = cast(win32.HINSTANCE)win32.GetModuleHandleW(nil),
 		hbrBackground = win32.GetSysColorBrush(win32.COLOR_3DFACE),
-		lpfnWndProc   = wnd_proc,
-		hCursor       = win32.LoadCursorA(nil, win32.IDC_ARROW),
+		lpfnWndProc = wnd_proc,
+		hCursor = win32.LoadCursorA(nil, win32.IDC_ARROW),
 	}
 	win32.RegisterClassW(&wc)
 
