@@ -40,7 +40,8 @@ get_stream_reader :: #force_inline proc(using this: ^StreamDirectory, streamIdx 
 read_superblock :: proc(r: io.Reader) -> (this : SuperBlock, success: bool) {
     SuperBlock_ReadSize :: len(FileMagic) + size_of(SuperBlock)
     success = false
-    if r->impl_size() < SuperBlock_ReadSize {
+    size, _ := io.size(r)
+    if size < SuperBlock_ReadSize {
         log.debug("stream len too small to be a valid pdb file")
         return
     }
@@ -61,14 +62,14 @@ read_superblock :: proc(r: io.Reader) -> (this : SuperBlock, success: bool) {
 
 read_stream_dir :: proc(using this: ^SuperBlock, r: io.Reader) -> (sd: StreamDirectory, success: bool) {
     success = false
-    if seekN, seekErr := r->impl_seek(i64(blockMapAddr * blockSize), .Start); seekErr != nil {
+    if seekN, seekErr := io.seek(r, i64(blockMapAddr * blockSize), .Start); seekErr != nil {
         log.debugf("seek failed with %v", seekErr)
         return
     }
     sdBlockCount := ceil_div(numDirectoryBytes, blockSize)
     iData := make([]byte, sdBlockCount*size_of(u32le), context.temp_allocator)
     defer delete(iData, context.temp_allocator)
-    if nRead, readErr := r->impl_read(iData); readErr != nil || nRead != len(iData) {
+    if nRead, readErr := io.read(r, iData); readErr != nil || nRead != len(iData) {
         log.debugf("read block map failed with %v, nRead: %d, should be %d", readErr, nRead, numDirectoryBytes)
         return
     }
@@ -126,14 +127,14 @@ make_reader_from_indiced_buf :: proc(r: io.Reader, indices: []u32le, blockSize: 
     buf := make([]byte, cast(uint)totalSize)
     for i in 0..<len(indices)-1 {
         isrc := int(indices[i])*blockSize
-        r->impl_seek(i64(isrc), .Start)
-        r->impl_read(buf[i*blockSize:(i+1)*blockSize])
+        io.seek(r, i64(isrc), .Start)
+        io.read(r, buf[i*blockSize:(i+1)*blockSize])
     }
     if len(indices) > 0 { // last buf
         i := len(indices) - 1
         isrc := int(indices[i])*blockSize
-        r->impl_seek(i64(isrc), .Start)
-        r->impl_read(buf[i*blockSize:])
+        io.seek(r, i64(isrc), .Start)
+        io.read(r, buf[i*blockSize:])
     }
     return make_dummy_reader(buf)
 }
@@ -159,7 +160,7 @@ read_packed_from_stream :: #force_inline proc(r: io.Stream, $T: typeid) -> (ret:
         }
     }
     buf := transmute([]byte)mem.Raw_Slice{&ret, size_of(T),}
-    r->impl_read(buf) or_return
+    io.read(r, buf) or_return
     return ret, err
 }
 

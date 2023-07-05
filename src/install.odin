@@ -573,8 +573,7 @@ load_info :: proc(info_path: string, pipe: win32.HANDLE = nil) -> (success: bool
 download_file :: proc(pipe: win32.HANDLE = nil, url, to: string, total_size: uint = 0) -> (success: bool) {
 	context.allocator = runtime.default_allocator()
 
-	url := strings.trim_prefix(url, "https://")
-	p := slashpath.split_elements(url)
+	p := slashpath.split_elements(strings.trim_prefix(url, "https://"))
 	defer delete(p)
 
 	site_url := p[0]
@@ -1048,6 +1047,18 @@ cli :: proc() {
 			write_progress(pipe, .Error, fmt.tprint("Failed to install cab:", tools_info.debug_crt_runtime.file_name))
 			return
 		}
+
+		// Rename all .dll_amd64 to .dll
+		install_dir, _ := os.open(dst)
+		files_info, _ := os.read_dir(install_dir, -1)
+		for fi in files_info {
+			if strings.has_suffix(fi.name, ".dll_amd64") {
+				if os.rename(fi.fullpath, strings.trim_suffix(fi.fullpath, "_amd64")) != os.ERROR_NONE {
+					write_progress(pipe, .Error, fmt.tprint("Failed to rename file:", fi.fullpath))
+					return
+				}
+			}
+		}
 	}
 
 	// 8. Cleanup
@@ -1097,8 +1108,8 @@ cli :: proc() {
 	vc_tools_install_dir := fmt.tprintf(`{}\`, msvc_root)
 	windows_sdk_dir := fmt.tprintf(`{}\`, sdk_dir)
 
+	msvc_bin := filepath.join({msvc_root, "bin", strings.join({"Host", msvc_arch}, ""), msvc_arch})
 	sdk_bin_paths: []string = {
-		filepath.join({msvc_root, "bin", strings.join({"Host", msvc_arch}, ""), msvc_arch}),
 		filepath.join({sdk_dir, "bin", sdkv, sdk_arch}),
 		filepath.join({sdk_dir, "bin", sdkv, sdk_arch, "ucrt"}),
 	}
@@ -1133,14 +1144,15 @@ set WindowsSDKVersion={}
 set VCToolsInstallDir={}
 set VSCMD_ARG_TGT_ARCH={}
 
+set MSVC_BIN={}
 set SDK_BIN={}
-set PATH=%%SDK_BIN%%;%%PATH%%
+set PATH=%%MSVC_BIN%%;%%SDK_BIN%%;%%PATH%%
 set INCLUDE={}
 set LIB={}
 `
 
-		data := fmt.aprintf(SETUP_SCRIPT, sdk_dir, sdkv, vc_tools_install_dir, target_arch, sdk_bin, include, lib)
-		file_name := fmt.tprintf("{}.bat", setup_script_name)
+		data := fmt.aprintf(SETUP_SCRIPT, sdk_dir, sdkv, vc_tools_install_dir, target_arch, msvc_bin, sdk_bin, include, lib)
+		file_name := fmt.tprintf("{}.bat", devcmd_script_name)
 		file_path := filepath.join({install_path, file_name})
 		os.write_entire_file(file_path, transmute([]byte)data)
 	}
@@ -1173,6 +1185,9 @@ set LIB={}
 			write_progress(pipe, .Error, fmt.tprint("Failed to save LIB"))
 		}
 
+		if set_env_in_registry("MSVC_BIN", msvc_bin, location) != .None {
+			write_progress(pipe, .Error, fmt.tprint("Failed to save MSVC_BIN"))
+		}
 		if set_env_in_registry("SDK_BIN", sdk_bin, location) != .None {
 			write_progress(pipe, .Error, fmt.tprint("Failed to save SDK_BIN"))
 		}
@@ -1183,7 +1198,7 @@ set LIB={}
 			break ADD_TO_ENV
 		}
 
-		path := add_to_env_if_not_exists(env_path, "%SDK_BIN%")
+		path := add_to_env_if_not_exists(env_path, "%MSVC_BIN%;%SDK_BIN%")
 		if set_env_in_registry("PATH", path, location, true) != .None {
 			write_progress(pipe, .Error, fmt.tprint("Failed to save PATH"))
 		}

@@ -14,10 +14,8 @@ import "winhttp"
 import w "widgets"
 import win32 "core:sys/windows"
 
-import wininfo "core:sys/info"
-
 when ODIN_OS == .Windows && ODIN_DEBUG {
-	import pdb "pdb-154951d" // https://github.com/DaseinPhaos/pdb
+	import pdb "pdb-297ecbf/pdb" // https://github.com/DaseinPhaos/pdb
 }
 
 L :: win32.L
@@ -32,7 +30,7 @@ PREP_DONE :: win32.WM_APP + 1
 internet_session: winhttp.HINTERNET
 
 create_setup_script := true
-setup_script_name := fmt.aprint(`setup`)
+devcmd_script_name := fmt.aprint(`devcmd`)
 add_to_env: bool
 env_is_global: bool // install for all users or not
 info_path: string
@@ -172,7 +170,7 @@ show_main_page :: proc() {
 			layout := layout
 			rect_cut_margins(&layout, 10)
 			layout = rect_cut_bottom_button(&layout)
-			widgets[.ScriptName] = w.add_widget(.Edit, setup_script_name, layout)
+			widgets[.ScriptName] = w.add_widget(.Edit, devcmd_script_name, layout)
 		}
 	}
 	set_script_name(create_setup_script)
@@ -279,7 +277,7 @@ launch_installer :: proc() {
 		env_mode = "global" if env_is_global else "local"
 	}
 	params := fmt.tprintf(`accept_license msvc={} sdk={} target={} host={} install_path="{}" script="{}" env={} pipe={} info="{}"`,
-		msvc_version, sdk_version, target_arch, host_arch, filepath.clean(install_path, context.temp_allocator), setup_script_name if create_setup_script else "", env_mode,
+		msvc_version, sdk_version, target_arch, host_arch, filepath.clean(install_path, context.temp_allocator), devcmd_script_name if create_setup_script else "", env_mode,
 		PIPE_PATH, info_path,
 	)
 	inst := win32.ShellExecuteW(nil, L("runas") if admin else nil, win32.utf8_to_wstring(os.args[0]), win32.utf8_to_wstring(params), nil, 0)
@@ -516,8 +514,8 @@ update_script_name :: proc() {
 	fb: [win32.MAX_PATH_WIDE]win32.WCHAR
 	script, ok := w.get_text(widgets[.ScriptName], fb[:], context.allocator)
 	if ok {
-		delete(setup_script_name)
-		setup_script_name = script
+		delete(devcmd_script_name)
+		devcmd_script_name = script
 	}
 }
 

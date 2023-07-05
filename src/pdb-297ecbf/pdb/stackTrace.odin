@@ -271,9 +271,9 @@ parse_stack_trace :: proc(stackTrace: []StackFrame, sameProcess: bool, srcCodeLo
                     } else {
                         // otherwise we need to seek to it on disk
                         peStream := os.stream_from_handle(peFile)
-                        if n, err := peStream->impl_seek(i64(dde.pRawData), .Start); err != nil || n != i64(dde.pRawData) do continue
+                        if n, err := io.seek(peStream, i64(dde.pRawData), .Start); err != nil || n != i64(dde.pRawData) do continue
                         buf := make([]byte, int(dde.dataSize))
-                        if n, err := peStream->impl_read(buf[:]); err != nil || n != len(buf) {
+                        if n, err := io.read(peStream, buf[:]); err != nil || n != len(buf) {
                             delete(buf)
                             continue
                         }
@@ -298,7 +298,7 @@ parse_stack_trace :: proc(stackTrace: []StackFrame, sameProcess: bool, srcCodeLo
             }
             if pdbErr == 0 {
                 mi.pdbHandle = pdbFile
-                pdbr := io.Reader{os.stream_from_handle(pdbFile)}
+                pdbr := io.to_reader(os.stream_from_handle(pdbFile))
                 if streamDir, sdOk := find_stream_dir(pdbr); sdOk {
                     mi.streamDir = streamDir
                     pdbSr := get_stream_reader(&mi.streamDir, PdbStream_Index)

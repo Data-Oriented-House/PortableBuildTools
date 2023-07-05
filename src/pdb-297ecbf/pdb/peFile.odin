@@ -262,13 +262,13 @@ PECodeViewInfoPdb70Base :: struct #packed {
 PECodeView_Signature_RSDS :u32le: 0x5344_5352
 
 parse_pe_data_dirs :: proc(r: io.Stream) -> (ret : PEOptHdr_DataDirectories, err: io.Error) {
-    r->impl_seek(PE_Signature_OffsetIdxPos, .Start) or_return
+    io.seek(r, PE_Signature_OffsetIdxPos, .Start) or_return
     peSigOffset := read_packed_from_stream(r, u32le) or_return
-    r->impl_seek(i64(peSigOffset), .Start) or_return
+    io.seek(r, i64(peSigOffset), .Start) or_return
     PEPlusDataDirEnd :: size_of(u32le) + size_of(CoffFileHeader) + size_of(PEOptHdrMagic) + size_of(PEOptHdrPlus) + size_of(PEOptHdr_DataDirectories)
     
     buf :[PEPlusDataDirEnd]byte
-    r->impl_read(buf[:]) or_return
+    io.read(r, buf[:]) or_return
     br := make_dummy_reader(buf[:])
     _, _, dataDirs := read_pe_headers(&br)
     return dataDirs, nil
