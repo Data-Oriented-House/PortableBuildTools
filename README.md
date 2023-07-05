@@ -2,6 +2,11 @@
 
 Portable, simple and fast installer for Visual Studio build tools.
 
+This downloads standalone 64-bit MSVC compiler, linker & other tools,
+also headers/libraries from Windows SDK into portable folder, without installing Visual Studio.
+
+Has bare minimum components - no UWP/Store/WindowsRT stuff, just files & tools for 64-bit native desktop app development.
+
 Download [latest release](https://github.com/Data-Oriented-House/PortableBuildTools/releases/latest/download/PortableBuildTools.exe).
 
 ![Screenshot](screenshot.png)
