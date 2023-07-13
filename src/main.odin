@@ -111,8 +111,8 @@ show_prep_page :: proc() {
 	layout := new_page()
 
 	{
-		layout := rect_cut_bottom(&layout, 23)
-		widgets[.InstallProgress] = w.add_widget(.Progress_Bar, "", layout)
+		progress_bar := rect_cut_bottom(&layout, 23)
+		widgets[.InstallProgress] = w.add_widget(.Progress_Bar, "", progress_bar)
 	}
 	rect_cut_bottom(&layout, 10)
 
@@ -128,36 +128,35 @@ show_main_page :: proc() {
 	lid: win32.HWND
 
 	{
-		layout := layout
+		pickers := rect_cut_top(&layout, 50)
 		{
-			layout := rect_cut_left(&layout, 80)
-			w.add_widget(.Text, "MSVC Version", rect_cut_top_button(&layout))
-			widgets[.MSVCPicker] = w.add_widget(.Combo_Box, "", layout)
+			picker := rect_cut_left(&pickers, 80)
+			w.add_widget(.Text, "MSVC Version", rect_cut_top_button(&picker))
+			widgets[.MSVCPicker] = w.add_widget(.Combo_Box, "", picker)
 			w.fill_combo_box(widgets[.MSVCPicker], tools_info.msvc_versions)
 		}
-		rect_cut_left(&layout, 10)
+		rect_cut_left(&pickers, 10)
 		{
-			layout := rect_cut_left(&layout, 80)
-			w.add_widget(.Text, "SDK Version", rect_cut_top_button(&layout))
-			widgets[.SDKPicker] = w.add_widget(.Combo_Box, "", layout)
+			picker := rect_cut_left(&pickers, 80)
+			w.add_widget(.Text, "SDK Version", rect_cut_top_button(&picker))
+			widgets[.SDKPicker] = w.add_widget(.Combo_Box, "", picker)
 			w.fill_combo_box(widgets[.SDKPicker], tools_info.sdk_versions)
 		}
-		rect_cut_left(&layout, 10)
+		rect_cut_left(&pickers, 10)
 		{
-			layout := rect_cut_left(&layout, 80)
-			w.add_widget(.Text, "Target Arch", rect_cut_top_button(&layout))
-			widgets[.TargetPicker] = w.add_widget(.Combo_Box, "", layout)
+			picker := rect_cut_left(&pickers, 80)
+			w.add_widget(.Text, "Target Arch", rect_cut_top_button(&picker))
+			widgets[.TargetPicker] = w.add_widget(.Combo_Box, "", picker)
 			w.fill_combo_box(widgets[.TargetPicker], targets)
 		}
-		rect_cut_left(&layout, 10)
+		rect_cut_left(&pickers, 10)
 		{
-			layout := rect_cut_left(&layout, 80)
-			w.add_widget(.Text, "Host Arch", rect_cut_top_button(&layout))
-			widgets[.HostPicker] = w.add_widget(.Combo_Box, "", layout)
+			picker := rect_cut_left(&pickers, 80)
+			w.add_widget(.Text, "Host Arch", rect_cut_top_button(&picker))
+			widgets[.HostPicker] = w.add_widget(.Combo_Box, "", picker)
 			w.fill_combo_box(widgets[.HostPicker], hosts)
 		}
 	}
-	rect_cut_top(&layout, 50)
 
 	widgets[.CreateSetupScript] = w.add_widget(.Check_Box, `Create "Developer Command Prompt" Batch Script`, rect_cut_top_button(&layout))
 	w.set_checkbox(widgets[.CreateSetupScript], create_setup_script)
@@ -208,22 +207,23 @@ show_main_page :: proc() {
 	w.add_widget(.Text, "", rect_cut_top(&layout, 1), win32.WS_BORDER)
 
 	{
-		layout := rect_cut_bottom(&layout, 23)
+		bottom_panel := rect_cut_bottom(&layout, 23)
 
-		widgets[.Install] = add_button_autow("Install", &layout, .Right)
+		widgets[.Install] = add_button_autow("Install", &bottom_panel, .Right)
 
 		// NOTE: Ideally I would like the text to be clickable as in other checkboxes;
 		// But unfortunately the size measurements Windows reports for text are completely randomized for some reason;
-		// So I settled on only having a checkbox clickable for consistent GUI.
+		// It is randomized between Windows versions, and even between builds of the same major version.
+		// So I settled on only having only the checkbox clickable for consistent GUI.
 		// Consider this a feature: user needs to hit the checkbox exactly right to prove that he read the License!
 		checkbox_width := win32.GetSystemMetrics(win32.SM_CXMENUCHECK) + win32.GetSystemMetrics(win32.SM_CXEDGE)
-		widgets[.AcceptLicense] = w.add_widget(.Check_Box, "", rect_cut_left(&layout, cast(int)checkbox_width))
+		widgets[.AcceptLicense] = w.add_widget(.Check_Box, "", rect_cut_left(&bottom_panel, cast(int)checkbox_width))
 		w.set_checkbox(widgets[.AcceptLicense], accept_license)
 
-		rect_cut_top(&layout, 4) // Align (kinda) the following text with the checkbox
+		rect_cut_top(&bottom_panel, 4) // Align (kinda) the following text with the checkbox
 
 		license := strings.concatenate({`I accept the <a href="`, tools_info.license_url, `">License Agreement</a>`})
-		lid = w.add_widget(.Link, license, layout)
+		lid = w.add_widget(.Link, license, bottom_panel)
 	}
 
 	w.change_tab_order(widgets[.FolderPath], widgets[.ChooseFolder], widgets[.AcceptLicense], lid, widgets[.Install])
@@ -237,10 +237,10 @@ show_install_page :: proc() {
 	layout := new_page()
 
 	{
-		layout := rect_cut_bottom(&layout, 23)
-		widgets[.Close] = add_button_autow("Close", &layout, .Right, win32.WS_DISABLED)
-		rect_cut_right(&layout, 5)
-		widgets[.InstallProgress] = w.add_widget(.Progress_Bar, "", layout)
+		bottom_panel := rect_cut_bottom(&layout, 23)
+		widgets[.Close] = add_button_autow("Close", &bottom_panel, .Right, win32.WS_DISABLED)
+		rect_cut_right(&bottom_panel, 5)
+		widgets[.InstallProgress] = w.add_widget(.Progress_Bar, "", bottom_panel)
 	}
 	rect_cut_bottom(&layout, 10)
 

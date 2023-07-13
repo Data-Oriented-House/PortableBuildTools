@@ -1,6 +1,9 @@
 .vs
 *.res
 *.exe
+*.obj
 *.pdb
 *.db
 *.ll
+*.spall
+*.rdbg
