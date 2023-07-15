@@ -29,7 +29,6 @@ PREP_DONE :: win32.WM_APP + 1
 
 internet_session: winhttp.HINTERNET
 
-create_setup_script := true
 devcmd_script_name := fmt.aprint(`devcmd`)
 add_to_env: bool
 env_is_global: bool // install for all users or not
@@ -39,7 +38,7 @@ free_space: int = -1
 
 allow_closing: bool = true
 window_rect, window_client: Rect
-window_w, window_h: i32 = 380, 340
+window_w, window_h: i32 = 380, 310
 program_icon: win32.HICON
 
 Side :: enum {
@@ -158,13 +157,9 @@ show_main_page :: proc() {
 		}
 	}
 
-	widgets[.CreateSetupScript] = w.add_widget(.Check_Box, `Create "Developer Command Prompt" Batch Script`, rect_cut_top_button(&layout))
-	w.set_checkbox(widgets[.CreateSetupScript], create_setup_script)
-	rect_cut_top(&layout, 5)
-
 	{
 		layout := rect_cut_top(&layout, 50)
-		widgets[.ScriptNameFrame] = w.add_widget(.Frame, "Script name", layout)
+		widgets[.ScriptNameFrame] = w.add_widget(.Frame, `"Developer Command Prompt" Batch Script name`, layout)
 		{
 			layout := layout
 			rect_cut_margins(&layout, 10)
@@ -172,7 +167,6 @@ show_main_page :: proc() {
 			widgets[.ScriptName] = w.add_widget(.Edit, devcmd_script_name, layout)
 		}
 	}
-	set_script_name(create_setup_script)
 	rect_cut_top(&layout, 10)
 
 	widgets[.AddToEnv] = w.add_widget(.Check_Box, "Add to Environment (avoids having to use a script)", rect_cut_top_button(&layout))
@@ -277,7 +271,7 @@ launch_installer :: proc() {
 		env_mode = "global" if env_is_global else "local"
 	}
 	params := fmt.tprintf(`accept_license msvc={} sdk={} target={} host={} install_path="{}" script="{}" env={} pipe={} info="{}"`,
-		msvc_version, sdk_version, target_arch, host_arch, filepath.clean(install_path, context.temp_allocator), devcmd_script_name if create_setup_script else "", env_mode,
+		msvc_version, sdk_version, target_arch, host_arch, filepath.clean(install_path, context.temp_allocator), devcmd_script_name, env_mode,
 		PIPE_PATH, info_path,
 	)
 	inst := win32.ShellExecuteW(nil, L("runas") if admin else nil, win32.utf8_to_wstring(os.args[0]), win32.utf8_to_wstring(params), nil, 0)
@@ -519,11 +513,6 @@ update_script_name :: proc() {
 	}
 }
 
-set_script_name :: proc(enabled: bool) {
-	w.set_widget_enabled(widgets[.ScriptName], enabled)
-	w.set_widget_enabled(widgets[.ScriptNameFrame], enabled)
-}
-
 process_command :: proc(winid: win32.HWND, wparam: win32.WPARAM, lparam: win32.LPARAM) {
 	hiword := win32.HIWORD(win32.DWORD(wparam))
 
@@ -545,11 +534,6 @@ process_command :: proc(winid: win32.HWND, wparam: win32.WPARAM, lparam: win32.L
 		env_is_global = !env_is_global
 		w.set_checkbox(id, env_is_global)
 		update_install_button_admin()
-
-	case widgets[.CreateSetupScript]:
-		create_setup_script = !create_setup_script
-		w.set_checkbox(id, create_setup_script)
-		set_script_name(create_setup_script)
 
 	case widgets[.AcceptLicense]:
 		accept_license = !accept_license
