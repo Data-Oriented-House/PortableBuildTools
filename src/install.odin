@@ -16,7 +16,7 @@ import w "widgets"
 import mz "miniz"
 import win32 "core:sys/windows"
 
-DEFAULT_INSTALL_PATH :: `.\BuildTools`
+DEFAULT_INSTALL_PATH :: `C:\BuildTools`
 MANIFEST_URL :: `https://aka.ms/vs/17/release/channel`
 Payload :: struct {
 	file_name: string,
