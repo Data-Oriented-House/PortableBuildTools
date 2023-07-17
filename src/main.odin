@@ -21,7 +21,6 @@ when ODIN_OS == .Windows && ODIN_DEBUG {
 L :: win32.L
 
 WINDOW_TITLE :: "PortableBuildTools Setup"
-CONFIRM_MSG :: "Are you sure you want to quit "+WINDOW_TITLE+"?"
 SPACE_UNKNOWN :: "Space available: Unknown"
 SPACE_REQUIRED :: 2 * mem.Gigabyte
 
@@ -40,6 +39,7 @@ allow_closing: bool = true
 window_rect, window_client: Rect
 window_w, window_h: i32 = 380, 310
 program_icon: win32.HICON
+window_id: win32.HWND
 
 Side :: enum {
 	Left,
@@ -48,7 +48,6 @@ Side :: enum {
 
 Widget_ID :: enum {
 	None,
-	Close,
 	AcceptLicense,
 	MSVCPicker,
 	SDKPicker,
@@ -106,18 +105,13 @@ prep :: proc() {
 	win32.PostMessageW(w.page.id, PREP_DONE, 0, 0)
 }
 
-show_prep_page :: proc() {
+show_console_page :: proc() {
 	layout := new_page()
 
-	{
-		progress_bar := rect_cut_bottom(&layout, 23)
-		widgets[.InstallProgress] = w.add_widget(.Progress_Bar, "", progress_bar)
-	}
+	widgets[.InstallProgress] = w.add_widget(.Progress_Bar, "", rect_cut_bottom(&layout, 23))
 	rect_cut_bottom(&layout, 10)
 
 	widgets[.Console] = w.add_widget(.Console, "", layout)
-
-	thread.run(prep, runtime.default_context(), .High)
 }
 
 show_main_page :: proc() {
@@ -227,27 +221,23 @@ show_main_page :: proc() {
 	update_install_button_enabled()
 }
 
-show_install_page :: proc() {
-	layout := new_page()
+enable_close_button :: proc(state: bool) {
+	hMenu: win32.HMENU
+	dwExtra: win32.UINT
 
-	{
-		bottom_panel := rect_cut_bottom(&layout, 23)
-		widgets[.Close] = add_button_autow("Close", &bottom_panel, .Right, win32.WS_DISABLED)
-		rect_cut_right(&bottom_panel, 5)
-		widgets[.InstallProgress] = w.add_widget(.Progress_Bar, "", bottom_panel)
-	}
-	rect_cut_bottom(&layout, 10)
+	hMenu = win32.GetSystemMenu(window_id, false)
+	if hMenu == nil do return
 
-	widgets[.Console] = w.add_widget(.Console, "", layout)
-
-	w.change_tab_order(widgets[.Close], widgets[.Console])
+	dwExtra = state ? win32.MF_ENABLED : (win32.MF_DISABLED | win32.MF_GRAYED)
+	win32.EnableMenuItem(hMenu, win32.SC_CLOSE, win32.MF_BYCOMMAND | dwExtra)
+	allow_closing = state
 }
 
 launch_installer :: proc() {
-	allow_closing = false
+	enable_close_button(false)
+
 	defer {
-		allow_closing = true
-		w.set_widget_enabled(widgets[.Close], true)
+		enable_close_button(true)
 	}
 
 	PIPE_PATH :: `\\.\pipe\BuildTools`
@@ -517,9 +507,6 @@ process_command :: proc(winid: win32.HWND, wparam: win32.WPARAM, lparam: win32.L
 	hiword := win32.HIWORD(win32.DWORD(wparam))
 
 	switch id := w.get_widget_from_wparam(winid, wparam); id {
-	case widgets[.Close]:
-		win32.PostMessageW(winid, win32.WM_CLOSE, 0, 0)
-
 	case widgets[.ChooseFolder]:
 		folder, ok := select_folder(allocator = context.allocator)
 		if ok {
@@ -541,8 +528,7 @@ process_command :: proc(winid: win32.HWND, wparam: win32.WPARAM, lparam: win32.L
 		update_install_button_enabled()
 
 	case widgets[.Install]:
-		show_install_page()
-
+		show_console_page()
 		thread.run(launch_installer, runtime.default_context(), .High)
 
 	case widgets[.FolderPath]:
@@ -608,16 +594,15 @@ wnd_proc :: proc "stdcall" (winid: win32.HWND, msg: win32.UINT, wparam: win32.WP
 		}
 
 		w.init_widget_page(winid)
-		show_prep_page()
+		show_console_page()
+		thread.run(prep, runtime.default_context(), .High)
 
 	case win32.WM_DESTROY:
 		win32.PostQuitMessage(0)
 
 	case win32.WM_CLOSE:
 		if !allow_closing {
-			if show_message_box(.OkCancel | .Warning, WINDOW_TITLE, CONFIRM_MSG, winid) == .Cancel {
-				return 0
-			}
+			return 0
 		}
 
 	case win32.WM_COMMAND:
@@ -700,16 +685,16 @@ main :: proc() {
 		window_w = crect.right - crect.left
 		window_h = crect.bottom - crect.top
 	}
-	winid := win32.CreateWindowW(wc.lpszClassName, L(WINDOW_TITLE), window_style,
+	window_id = win32.CreateWindowW(wc.lpszClassName, L(WINDOW_TITLE), window_style,
 		win32.CW_USEDEFAULT, win32.CW_USEDEFAULT, window_w, window_h, nil, nil, wc.hInstance, nil,
 	)
 
 	program_icon = win32.LoadIconW(wc.hInstance, L("icon"))
-	win32.SetClassLongPtrW(winid, win32.GCLP_HICON, auto_cast cast(uintptr)program_icon)
+	win32.SetClassLongPtrW(window_id, win32.GCLP_HICON, auto_cast cast(uintptr)program_icon)
 
 	msg: win32.MSG = ---
 	for win32.GetMessageW(&msg, nil, 0, 0) {
-		if win32.IsDialogMessageW(winid, &msg) do continue
+		if win32.IsDialogMessageW(window_id, &msg) do continue
 
 		win32.TranslateMessage(&msg)
 		win32.DispatchMessageW(&msg)

@@ -942,12 +942,12 @@ cli :: proc() {
 
 	// 3. Download msvc packages
 	write_progress(pipe, .Normal, "Downloading MSVC packages...", 10)
-	for p, idx in tools_info.msvc_packages {
+	for p in tools_info.msvc_packages {
 		if p.version != "" && p.version != msvc_version do continue
 		if p.target != "" && p.target != target_arch do continue
 		if p.host != "" && p.host != host_arch do continue
 
-		for payload, idx in p.payloads {
+		for payload in p.payloads {
 			write_progress(pipe, .Normal, payload.file_name)
 
 			if !download_payload(pipe, payload, packages_path) {
