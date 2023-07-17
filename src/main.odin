@@ -292,10 +292,24 @@ launch_installer :: proc() {
 			msg = strings.trim_prefix(msg, "MSG")
 			w.console_println(widgets[.Console], msg)
 
+			if msg == "Done!" {
+				if add_to_env {
+					if env_is_global {
+						show_message_box(.Info, "Success!", "Please reboot the machine to finish installation.", window_id)
+					} else {
+						show_message_box(.Info, "Success!", "Please log out and back in to finish installation.", window_id)
+					}
+				} else {
+					show_message_box(.Info, "Success!", "PortableBuildTools installed successfully.", window_id)
+				}
+			}
+
 		case strings.has_prefix(msg, "ERR"):
 			msg = strings.trim_prefix(msg, "ERR")
 			w.console_println(widgets[.Console], fmt.tprint("[ERROR]", msg))
 			w.set_progress_bar(widgets[.InstallProgress], -1, .Error)
+
+			show_message_box(.Error, "Error", "PortableBuildTools failed to install.", window_id)
 
 		case strings.has_prefix(msg, "UNK"):
 			w.set_progress_bar(widgets[.InstallProgress], -1, .Unknown)
