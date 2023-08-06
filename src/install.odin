@@ -3,7 +3,6 @@ package PortableBuildTools
 import "core:os"
 import "core:fmt"
 import "core:mem"
-// import "core:mem/virtual"
 import "core:slice"
 import "core:strings"
 import "core:runtime"
@@ -245,12 +244,6 @@ download_info :: proc(pipe: win32.HANDLE = nil, allocator := context.allocator) 
 	defer mem.dynamic_pool_destroy(&pool)
 	context.allocator = mem.dynamic_pool_allocator(&pool)
 
-/*
-	arena: virtual.Arena
-	_ = virtual.arena_init_static(&arena, mem.Gigabyte, 64 * mem.Megabyte)
-	defer virtual.arena_destroy(&arena)
-	context.allocator = virtual.arena_allocator(&arena)
-*/
 	// 0.1. Find temp directory
 	temp_dir: string
 	{

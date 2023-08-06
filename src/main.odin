@@ -10,13 +10,11 @@ import "core:strings"
 import "core:path/filepath"
 import "core:dynlib"
 
-import "winhttp"
-import w "widgets"
 import win32 "core:sys/windows"
 
-when ODIN_OS == .Windows && ODIN_DEBUG {
-	import pdb "pdb-297ecbf/pdb" // https://github.com/DaseinPhaos/pdb
-}
+import "winhttp"
+import w "widgets"
+import pdb "pdb-297ecbf/pdb" // https://github.com/DaseinPhaos/pdb
 
 L :: win32.L
 
