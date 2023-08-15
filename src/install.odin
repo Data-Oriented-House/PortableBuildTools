@@ -3,6 +3,7 @@ package PortableBuildTools
 import "core:os"
 import "core:fmt"
 import "core:mem"
+import "core:mem/virtual"
 import "core:slice"
 import "core:strings"
 import "core:runtime"
@@ -239,10 +240,12 @@ copy_file :: proc(from, to: string) -> i32 {
 
 // Downloads info to temp directory
 download_info :: proc(pipe: win32.HANDLE = nil, allocator := context.allocator) -> Maybe(string) {
-	pool: mem.Dynamic_Pool
-	mem.dynamic_pool_init(pool = &pool, alignment = 64, block_size = 64 * mem.Megabyte) // the files are kinda big, takes 300+ MB parsed
-	defer mem.dynamic_pool_destroy(&pool)
-	context.allocator = mem.dynamic_pool_allocator(&pool)
+	arena: virtual.Arena
+	// I hope Microsoft doesn't make their .json files bigger than this
+	// But who knows, might need to bump up to 64GB later
+	_ = virtual.arena_init_static(&arena, 4 * mem.Gigabyte)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
 
 	// 0.1. Find temp directory
 	temp_dir: string
