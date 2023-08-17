@@ -49,7 +49,7 @@ DWORD64 :: u64
 NEON128 :: struct {Low: u64, High: i64,}
 ARM64_MAX_BREAKPOINTS :: 8
 ARM64_MAX_WATCHPOINTS :: 1
-M128A :: struct #align 16 #raw_union {
+M128A :: struct #align(16) #raw_union {
     using _base : struct { Low: u64, High: i64, },
     _v128 : i128,
 }
@@ -60,7 +60,7 @@ KNONVOLATILE_CONTEXT_POINTERS :: _AMD64_KNONVOLATILE_CONTEXT_POINTERS
 UNWIND_HISTORY_TABLE :: _AMD64_UNWIND_HISTORY_TABLE
 UNWIND_HISTORY_TABLE_ENTRY :: _AMD64_UNWIND_HISTORY_TABLE_ENTRY
 
-_AMD64_CONTEXT :: struct #align 16 {
+_AMD64_CONTEXT :: struct #align(16) {
     // register parameter home addresses
     P1Home,P2Home,P3Home,P4Home,P5Home,P6Home: DWORD64,
     // control flags
@@ -87,7 +87,7 @@ _AMD64_CONTEXT :: struct #align 16 {
     // special debug control registers
     DebugControl,LastBranchToRip,LastBranchFromRip,LastExceptionToRip,LastExceptionFromRip: DWORD64,
 }
-XMM_SAVE_AREA32 :: struct #align 16 { // _XSAVE_FORMAT
+XMM_SAVE_AREA32 :: struct #align(16) { // _XSAVE_FORMAT
     ControlWord : WORD,
     StatusWord : WORD,
     TagWord : BYTE,

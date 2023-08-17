@@ -14,7 +14,7 @@ import win32 "core:sys/windows"
 
 import "winhttp"
 import w "widgets"
-import pdb "pdb-297ecbf/pdb" // https://github.com/DaseinPhaos/pdb
+import pdb "pdb-f3314d5/pdb" // https://github.com/DaseinPhaos/pdb
 
 L :: win32.L
 
