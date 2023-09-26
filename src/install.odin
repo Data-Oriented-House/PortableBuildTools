@@ -219,6 +219,13 @@ write_progress :: proc(pipe: win32.HANDLE, state: w.Progress_Bar_State, message:
 	return
 }
 
+fully_qualify_path :: proc(p: string, allocator := context.allocator) -> string {
+	if filepath.volume_name(p) != "" do return p
+
+	cur_dir := os.get_current_directory(context.temp_allocator)
+	return filepath.join({cur_dir, p}, allocator)
+}
+
 copy_file :: proc(from, to: string) -> i32 {
 	from := from
 	to := to
@@ -650,13 +657,6 @@ download_payload :: proc(pipe: win32.HANDLE, payload: Payload, dir: string) -> (
 	return download_file(url = payload.url, to = to_path, total_size = cast(uint)payload.size)
 }
 
-fully_qualify_path :: proc(p: string, allocator := context.allocator) -> string {
-	if filepath.volume_name(p) != "" do return p
-
-	cur_dir := os.get_current_directory(context.temp_allocator)
-	return filepath.join({cur_dir, p}, allocator)
-}
-
 // Always make a directory and all directories above it, if needed, do not err if it already exists
 make_directory_always :: proc(p: string) -> i32 {
 	p := p
@@ -995,7 +995,7 @@ cli :: proc() {
 		}
 
 		// 5. Download needed cabs
-		write_progress(pipe, .Normal, "Downloading CAB packages...", 60)
+		write_progress(pipe, .Normal, "Downloading CAB packages...", 70)
 		for payload in p.payloads do for cab in cabs {
 			if !strings.has_suffix(payload.file_name, cab) {
 				continue
@@ -1011,7 +1011,7 @@ cli :: proc() {
 	}
 
 	// 6. Install msi packages
-	write_progress(pipe, .Normal, "Installing MSI packages...", 70)
+	write_progress(pipe, .Normal, "Installing MSI packages...", 80)
 	for msi, idx in msis {
 		msi_path := filepath.join({packages_path, msi}, context.temp_allocator)
 
@@ -1029,7 +1029,7 @@ cli :: proc() {
 	sdkv := filepath.base(sdkv_matches[0])
 
 	// 7. Download and install debug crt runtime
-	write_progress(pipe, .Normal, "Installing debug runtime...", 80)
+	write_progress(pipe, .Normal, "Installing debug runtime...", 85)
 	{
 		if !download_payload(pipe, tools_info.debug_crt_runtime, packages_path) {
 			write_progress(pipe, .Error, fmt.tprint("Failed to download cab:", tools_info.debug_crt_runtime.file_name, tools_info.debug_crt_runtime.url))
@@ -1037,27 +1037,37 @@ cli :: proc() {
 		}
 		cab_path := filepath.join({packages_path, tools_info.debug_crt_runtime.file_name})
 
-		dst := filepath.join({install_path, "VC/Tools/MSVC", msvcv, strings.join({"bin/Host", host_arch}, ""), target_arch})
-		if !install_debug_runtime(pipe, cab_path, dst) {
-			write_progress(pipe, .Error, fmt.tprint("Failed to install cab:", tools_info.debug_crt_runtime.file_name))
-			return
-		}
+		// TODO: In accordance with changes in Martin's script, this needs to be changed as well
+		// https://gist.github.com/mmozeiko/7f3162ec2988e81e56d5c4e22cde9977/revisions#diff-a6303b82561a4061c71e8838976143f06f295cc9a8a60cf53fc170cb5b9f3f1dL230-R248
+		{
+			dst := filepath.join({install_path, "VC/Tools/MSVC", msvcv, strings.join({"bin/Host", host_arch}, ""), target_arch})
+			if !install_debug_runtime(pipe, cab_path, dst) {
+				write_progress(pipe, .Error, fmt.tprint("Failed to install cab:", tools_info.debug_crt_runtime.file_name))
+				return
+			}
 
-		// Rename all .dll_amd64 to .dll
-		install_dir, _ := os.open(dst)
-		files_info, _ := os.read_dir(install_dir, -1)
-		for fi in files_info {
-			if strings.has_suffix(fi.name, ".dll_amd64") {
-				if os.rename(fi.fullpath, strings.trim_suffix(fi.fullpath, "_amd64")) != os.ERROR_NONE {
-					write_progress(pipe, .Error, fmt.tprint("Failed to rename file:", fi.fullpath))
-					return
+			// Rename all .dll_amd64 to .dll
+			install_dir, _ := os.open(dst)
+			files_info, _ := os.read_dir(install_dir, -1)
+			for fi in files_info {
+				if strings.has_suffix(fi.name, ".dll_amd64") {
+					if os.rename(fi.fullpath, strings.trim_suffix(fi.fullpath, "_amd64")) != os.ERROR_NONE {
+						write_progress(pipe, .Error, fmt.tprint("Failed to rename file:", fi.fullpath))
+						return
+					}
 				}
 			}
 		}
 	}
 
+	// TODO: In accordance with Martin's script DIA SDK needs to be added here
+	// https://gist.github.com/mmozeiko/7f3162ec2988e81e56d5c4e22cde9977/revisions#diff-a6303b82561a4061c71e8838976143f06f295cc9a8a60cf53fc170cb5b9f3f1dR250-R271
+	{
+		write_progress(pipe, .Normal, "Installing DIA SDK...", 90)
+	}
+
 	// 8. Cleanup
-	write_progress(pipe, .Normal, "Doing cleanup...", 90)
+	write_progress(pipe, .Normal, "Doing cleanup...", 95)
 	{
 		remove_recursively(filepath.join({install_path, "Common7"}))
 		remove_recursively(filepath.join({install_path, "VC/Tools/MSVC", msvcv, "Auxiliary"}))
