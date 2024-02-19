@@ -870,6 +870,8 @@ cli :: proc() {
 
 	if !load_info(info_path, pipe) do return
 
+	free_all(context.temp_allocator)
+
 	temp_dir, err := get_temp_dir()
 	if err != nil {
 		write_progress(pipe, .Error, "Unable to get temp dir.")

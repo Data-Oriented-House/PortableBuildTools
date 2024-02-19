@@ -94,6 +94,8 @@ prep :: proc() {
 	if !ok do return
 	if !load_info(info_path) do return
 
+	free_all(context.temp_allocator)
+
 	msvc_version = tools_info.msvc_versions[0]
 	sdk_version = tools_info.sdk_versions[0]
 	target_arch = targets[0]
