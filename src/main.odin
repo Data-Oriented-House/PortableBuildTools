@@ -14,7 +14,6 @@ import win32 "core:sys/windows"
 
 import "winhttp"
 import w "widgets"
-import pdb "pdb-f3314d5/pdb" // https://github.com/DaseinPhaos/pdb
 
 L :: win32.L
 
@@ -658,10 +657,6 @@ wnd_proc :: proc "stdcall" (winid: win32.HWND, msg: win32.UINT, wparam: win32.WP
 }
 
 main :: proc() {
-	when ODIN_OS == .Windows && ODIN_DEBUG {
-		pdb.SetUnhandledExceptionFilter(pdb.dump_stack_trace_on_exception)
-	}
-
 	internet_session = winhttp.Open(win32.L("WinHTTP/1.0"), .DEFAULT_PROXY, nil, nil, 0)
 	if internet_session == nil {
 		show_message_box(.Error, "Error", fmt.tprint("WinHttpOpen failed with error code:", win32.GetLastError()))
