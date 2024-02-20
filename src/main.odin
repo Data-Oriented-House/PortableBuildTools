@@ -670,6 +670,10 @@ main :: proc() {
 		cli()
 		return
 	}
+
+	// We are not doing CLI, free console so it never is shown.
+	win32.FreeConsole()
+	
 	gui_mode = true
 	install_path = fmt.aprint(DEFAULT_INSTALL_PATH)
 

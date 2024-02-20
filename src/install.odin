@@ -827,9 +827,31 @@ cli :: proc() {
 			continue
 		}
 
-		usage := `usage: PortableBuildTools.exe [cli] [accept_license] [msvc=MSVC version] [sdk=SDK version] [target=x64/x86/arm/arm64] [host=x64/x86]
-[install_path=.\BuildTools] [script=name] [env=local/global]`
-		fmt.printf("Argument {} is unknown\n", arg)
+		usage := `
+usage: PortableBuildTools.exe [cli] [accept_license] [msvc=MSVC version] [sdk=SDK version] [target=x64/x86/arm/arm64] [host=x64/x86] [install_path=.\BuildTools] [script=name] [env=local/global]
+
+*cli: make PortableBultTools run in command-line interface mode
+
+*accept_license: auto-accept the license
+
+*msvc=MSVC version: see GUI application for available versions, defaults to latest
+
+*sdk=SDK Version: see GUI application for available Windows SDK versions, defaults to latest Windows 10 SDK
+
+*target=x64/x86/arm/arm64: defaults to x64
+
+*host=x64/x86: defaults to x64
+
+*install_path=path: defaults to C:\BuildTools
+
+*script=filename to give developer command prompt batch file, defaults to devcmd. Do not include .bat extension
+
+*env=local/global: defaults to nothing. If supplied, then the installed path will be added to PATH environment variable, locally (for the current user) or globally (for all users)`
+		
+		if a != "--help" && a != "/?" && a != "-h" {
+			fmt.printf("Argument {} is unknown\n", arg)
+		}
+
 		fmt.println(usage)
 		return
 	}
@@ -1065,7 +1087,7 @@ cli :: proc() {
 	// TODO: In accordance with Martin's script DIA SDK needs to be added here
 	// https://gist.github.com/mmozeiko/7f3162ec2988e81e56d5c4e22cde9977/revisions#diff-a6303b82561a4061c71e8838976143f06f295cc9a8a60cf53fc170cb5b9f3f1dR250-R271
 	{
-		write_progress(pipe, .Normal, "Installing DIA SDK...", 90)
+		//write_progress(pipe, .Normal, "Installing DIA SDK...", 90)
 	}
 
 	// 8. Cleanup
