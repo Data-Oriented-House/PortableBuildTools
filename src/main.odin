@@ -541,6 +541,17 @@ process_command :: proc(winid: win32.HWND, wparam: win32.WPARAM, lparam: win32.L
 		update_install_button_enabled()
 
 	case widgets[.Install]:
+		if os.exists(install_path) {
+			dir, _ := os.open(install_path)
+			defer os.close(dir)
+
+			files_info, _ := os.read_dir(dir, -1, allocator = context.temp_allocator)
+			if len(files_info) > 0 {
+				show_message_box(.Error, "Error", "Installation directory is not empty.", window_id)
+				break
+			}
+		}
+
 		show_console_page()
 		thread.run(launch_installer, runtime.default_context(), .High)
 
