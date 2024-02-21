@@ -11,6 +11,10 @@ Download [latest release](https://github.com/Data-Oriented-House/PortableBuildTo
 
 ![Screenshot](screenshot.png)
 
+## Command-Line Interface
+
+The program also has a command-line interface. Run it with --help to see usage.
+
 ## Credits
 
 @mmozeiko - for the initial CLI Python [implementation](https://gist.github.com/mmozeiko/7f3162ec2988e81e56d5c4e22cde9977) of the tool
