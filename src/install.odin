@@ -955,7 +955,7 @@ usage: PortableBuildTools.exe [cli] [accept_license] [msvc=MSVC version] [sdk=SD
 	write_progress(pipe, .Normal, "Creating installation path...", 0)
 	// 1. Create install path
 	{
-		if make_directory_always(install_path) != 0 {
+		if err := make_directory_always(install_path); err != 0 {
 			write_progress(pipe, .Error, fmt.tprint("Failed to create install path:", err))
 			return
 		}
