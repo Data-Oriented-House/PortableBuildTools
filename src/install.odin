@@ -1151,7 +1151,7 @@ usage: PortableBuildTools.exe [cli] [accept_license] [msvc=MSVC version] [sdk=SD
 	vc_tools_install_dir := fmt.tprintf(`{}\`, msvc_root)
 	windows_sdk_dir := fmt.tprintf(`{}\`, sdk_dir)
 
-	msvc_bin := filepath.join({msvc_root, "bin", strings.join({"Host", host_arch}, ""), msvc_arch})
+	msvc_bin := filepath.join({msvc_root, "bin", strings.join({"Host", msvc_arch}, ""), msvc_arch})
 	sdk_bin_paths: []string = {
 		filepath.join({sdk_dir, "bin", sdkv, sdk_arch}),
 		filepath.join({sdk_dir, "bin", sdkv, sdk_arch, "ucrt"}),
