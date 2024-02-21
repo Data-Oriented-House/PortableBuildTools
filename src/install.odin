@@ -786,7 +786,8 @@ install_debug_runtime :: proc(pipe: win32.HANDLE, cab_path, install_path: string
 }
 
 cli :: proc() {
-	pipe_path, script_name, env_type: string
+	pipe_path, env_type: string
+	script_name := devcmd_script_name
 
 	for arg in os.args[1:] {
 		a := strings.to_lower(arg)
@@ -848,7 +849,7 @@ cli :: proc() {
 		}
 
 		usage := `
-usage: PortableBuildTools.exe [cli] [accept_license] [msvc=MSVC version] [sdk=SDK version] [target=x64/x86/arm/arm64] [host=x64/x86] [install_path=.\BuildTools] [script=name] [env=local/global]
+usage: PortableBuildTools.exe [cli] [accept_license] [msvc=MSVC version] [sdk=SDK version] [target=x64/x86/arm/arm64] [host=x64/x86] [install_path=C:\BuildTools] [script=name] [env=local/global]
 
 *cli: make PortableBuildTools run in command-line interface mode
 
@@ -1195,7 +1196,7 @@ set LIB={}
 `
 
 		data := fmt.aprintf(SETUP_SCRIPT, sdk_dir, sdkv, vc_tools_install_dir, target_arch, msvc_bin, sdk_bin, include, lib)
-		file_name := fmt.tprintf("{}.bat", devcmd_script_name)
+		file_name := fmt.tprintf("{}.bat", script_name)
 		file_path := filepath.join({install_path, file_name})
 		os.write_entire_file(file_path, transmute([]byte)data)
 	}
