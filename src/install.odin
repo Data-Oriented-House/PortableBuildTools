@@ -662,7 +662,10 @@ download_file :: proc(pipe: win32.HANDLE = nil, url, to: string, total_size: uin
 		}
 
 		last_percentage = percentage
-		write_progress(pipe, .Normal, "", percentage)
+
+		if percentage % 10 == 0 {
+			write_progress(pipe, .Normal, "", percentage)
+		}
 	}
 
 	return true
