@@ -31,6 +31,11 @@ Package_Info :: struct {
 	host: string,
 	payloads: []Payload,
 }
+Debug_Package_Info :: struct {
+	host: string,
+	msi: string,
+	payloads: []Payload,
+}
 Tools_Info :: struct {
 	license_url: string,
 
@@ -40,7 +45,7 @@ Tools_Info :: struct {
 	msvc_packages: []Package_Info,
 	sdk_packages: []Package_Info,
 
-	debug_crt_runtime: Payload,
+	debug_crt_runtime: []Debug_Package_Info,
 }
 tools_info: Tools_Info
 // other architectures may or may not work - not really tested
@@ -245,6 +250,25 @@ copy_file :: proc(from, to: string) -> i32 {
 	return win32.SHFileOperationW(&file_op)
 }
 
+move_file :: proc(from, to: string) -> i32 {
+	from := from
+	to := to
+	from = fully_qualify_path(from, context.temp_allocator)
+	to = fully_qualify_path(to, context.temp_allocator)
+
+	file_op: win32.SHFILEOPSTRUCTW = {
+		nil,
+		win32.FO_MOVE,
+		win32.utf8_to_wstring(fmt.tprintf("{}\x00", from)), // the string must be double-null terminated
+		win32.utf8_to_wstring(fmt.tprintf("{}\x00", to)),
+		win32.FOF_NOCONFIRMATION | win32.FOF_NOERRORUI | win32.FOF_SILENT,
+		false,
+		nil,
+		nil,
+	}
+	return win32.SHFileOperationW(&file_op)
+}
+
 // Downloads info to temp directory
 download_info :: proc(pipe: win32.HANDLE = nil, allocator := context.allocator) -> Maybe(string) {
 	arena: virtual.Arena
@@ -357,7 +381,7 @@ download_info :: proc(pipe: win32.HANDLE = nil, allocator := context.allocator) 
 	sdk_long_versions := make([dynamic]string)
 	msvc_packages := make([dynamic]Package_Info)
 	sdk_packages := make([dynamic]Package_Info)
-	debug_crt_runtime: Payload
+	debug_crt_runtime := make([dynamic]Debug_Package_Info)
 	{
 		write_progress(pipe, .Normal, "Parsing...", 50)
 
@@ -409,18 +433,14 @@ download_info :: proc(pipe: win32.HANDLE = nil, allocator := context.allocator) 
 
 			id := strings.to_lower(pkg_id, context.temp_allocator)
 
-			if id == "microsoft.visualcpp.runtimedebug.14" && "machineArch" in pkg && pkg["machineArch"].(json.String) == "x64" {
-				for p in pkg["payloads"].(json.Array) {
-					p := p.(json.Object)
-					if p["fileName"].(json.String) != "cab1.cab" do continue
-
-					debug_crt_runtime = {
-						file_name = p["fileName"].(json.String),
-						sha256 = p["sha256"].(json.String),
-						size = i64(p["size"].(json.Float)),
-						url = p["url"].(json.String),
-					}
+			if id == "microsoft.visualcpp.runtimedebug.14" {
+				debug_package := Debug_Package_Info{
+					host = pkg["chip"].(json.String),
 				}
+
+				payloads := get_payloads(pkg)
+				debug_package.payloads = payloads[:]
+				append(&debug_crt_runtime, debug_package)
 				continue
 			}
 
@@ -516,7 +536,7 @@ download_info :: proc(pipe: win32.HANDLE = nil, allocator := context.allocator) 
 		sdk_versions = sdk_versions[:],
 		msvc_packages = msvc_packages[:],
 		sdk_packages = sdk_packages[:],
-		debug_crt_runtime = debug_crt_runtime,
+		debug_crt_runtime = debug_crt_runtime[:],
 	}
 
 	info_path: string
@@ -935,8 +955,7 @@ usage: PortableBuildTools.exe [cli] [accept_license] [msvc=MSVC version] [sdk=SD
 	write_progress(pipe, .Normal, "Creating installation path...", 0)
 	// 1. Create install path
 	{
-		err := make_directory_always(install_path)
-		if err != 0 {
+		if make_directory_always(install_path) != 0 {
 			write_progress(pipe, .Error, fmt.tprint("Failed to create install path:", err))
 			return
 		}
@@ -946,15 +965,13 @@ usage: PortableBuildTools.exe [cli] [accept_license] [msvc=MSVC version] [sdk=SD
 	packages_path := filepath.join({temp_dir, "packages"})
 	{
 		if os.exists(packages_path) {
-			err := remove_recursively(packages_path)
-			if err != 0 {
+			if err := remove_recursively(packages_path); err != 0 {
 				write_progress(pipe, .Error, fmt.tprint("Failed to clear packages path:", err))
 				return
 			}
 		}
 
-		err := make_directory_always(packages_path)
-		if err != 0 {
+		if err := make_directory_always(packages_path); err != 0 {
 			write_progress(pipe, .Error, fmt.tprint("Failed to create packages path:", err))
 			return
 		}
@@ -1053,75 +1070,72 @@ usage: PortableBuildTools.exe [cli] [accept_license] [msvc=MSVC version] [sdk=SD
 	sdkv := filepath.base(sdkv_matches[0])
 
 	// 7. Download and install debug crt runtime
-	write_progress(pipe, .Normal, "Installing debug runtime...", 85)
-	{
-		if !download_payload(pipe, tools_info.debug_crt_runtime, packages_path) {
-			write_progress(pipe, .Error, fmt.tprint("Failed to download cab:", tools_info.debug_crt_runtime.file_name, tools_info.debug_crt_runtime.url))
-			return
+	for debug_package in tools_info.debug_crt_runtime {
+		if debug_package.host != host_arch {
+			continue
 		}
-		cab_path := filepath.join({packages_path, tools_info.debug_crt_runtime.file_name})
 
-		// TODO: In accordance with changes in Martin's script, this needs to be changed as well
-		// https://gist.github.com/mmozeiko/7f3162ec2988e81e56d5c4e22cde9977/revisions#diff-a6303b82561a4061c71e8838976143f06f295cc9a8a60cf53fc170cb5b9f3f1dL230-R248
-		{
-			dst := filepath.join({install_path, "VC/Tools/MSVC", msvcv, strings.join({"bin/Host", host_arch}, ""), target_arch})
-			if !install_debug_runtime(pipe, cab_path, dst) {
-				write_progress(pipe, .Error, fmt.tprint("Failed to install cab:", tools_info.debug_crt_runtime.file_name))
+		write_progress(pipe, .Normal, "Installing debug runtime...", 85)
+
+		for payload in debug_package.payloads {
+			if !download_payload(pipe, payload, packages_path) {
+				write_progress(pipe, .Error, fmt.tprint("Failed to download debug package:", payload.file_name, payload.url))
 				return
 			}
+		}
 
-			// Rename all .dll_amd64 to .dll
-			install_dir, _ := os.open(dst)
-			files_info, _ := os.read_dir(install_dir, -1)
-			for fi in files_info {
-				if strings.has_suffix(fi.name, ".dll_amd64") {
-					if os.rename(fi.fullpath, strings.trim_suffix(fi.fullpath, "_amd64")) != os.ERROR_NONE {
-						write_progress(pipe, .Error, fmt.tprint("Failed to rename file:", fi.fullpath))
+		dst := filepath.join({install_path, "VC/Tools/MSVC", msvcv, strings.join({"bin/Host", host_arch}, ""), target_arch})
+		if err := make_directory_always(dst); err != 0 {
+			write_progress(pipe, .Error, fmt.tprint("Failed to create debug package path:", err))
+			return
+		}
+		dst_tmp := filepath.join({packages_path, "TMP_DBG"}, context.temp_allocator)
+		if err := make_directory_always(dst_tmp); err != 0 {
+			write_progress(pipe, .Error, fmt.tprint("Failed to create temporary debug package path:", err))
+			return
+		}
+
+		msi: string
+		for payload in debug_package.payloads {
+			if strings.has_suffix(payload.file_name, ".msi") {
+				msi = payload.file_name
+				break
+			}
+		}
+		msi_path := filepath.join({packages_path, msi}, context.temp_allocator)
+		if !install_msi_package(pipe, msi_path, dst_tmp) {
+			write_progress(pipe, .Error, fmt.tprint("Failed to install msi:", msi))
+			return
+		}
+
+		dir, _ := os.open(dst_tmp)
+		defer os.close(dir)
+
+		files_info, _ := os.read_dir(dir, -1)
+		for fi in files_info {
+			if strings.has_prefix(fi.name, "System") && fi.is_dir {
+				msi_dir, _ := os.open(fi.fullpath)
+				defer os.close(msi_dir)
+
+				msi_files_info, _ := os.read_dir(msi_dir, -1)
+				for msi_fi in msi_files_info {
+					if move_file(msi_fi.fullpath, filepath.join({dst, msi_fi.name}, context.temp_allocator)) != 0 {
+						write_progress(pipe, .Error, fmt.tprint("Failed to move file:", msi_fi.fullpath))
 						return
 					}
 				}
+
+				break
 			}
 		}
+
+		break
 	}
 
 	// TODO: In accordance with Martin's script DIA SDK needs to be added here
 	// https://gist.github.com/mmozeiko/7f3162ec2988e81e56d5c4e22cde9977/revisions#diff-a6303b82561a4061c71e8838976143f06f295cc9a8a60cf53fc170cb5b9f3f1dR250-R271
 	{
 		//write_progress(pipe, .Normal, "Installing DIA SDK...", 90)
-	}
-
-	// 8. Cleanup
-	write_progress(pipe, .Normal, "Doing cleanup...", 95)
-	{
-		remove_recursively(filepath.join({install_path, "Common7"}))
-		remove_recursively(filepath.join({install_path, "VC/Tools/MSVC", msvcv, "Auxiliary"}))
-		remove_recursively(filepath.join({install_path, "VC/Tools/MSVC", msvcv, "lib", target_arch, "store"}))
-		remove_recursively(filepath.join({install_path, "VC/Tools/MSVC", msvcv, "lib", target_arch, "uwp"}))
-
-		msi_glob, _ := filepath.glob(filepath.join({install_path, "*.msi"}))
-		for msi in msi_glob {
-			remove_recursively(msi)
-		}
-
-		remove_recursively(filepath.join({install_path, "Windows Kits/10", "Catalogs"}))
-		remove_recursively(filepath.join({install_path, "Windows Kits/10", "DesignTime"}))
-		remove_recursively(filepath.join({install_path, "Windows Kits/10", "bin", sdkv, "chpe"}))
-		remove_recursively(filepath.join({install_path, "Windows Kits/10", "Lib", sdkv, "ucrt_enclave"}))
-
-		for arch in targets {
-			if arch == target_arch do continue
-
-			remove_recursively(filepath.join({install_path, "VC/Tools/MSVC", msvcv, strings.join({"bin/Host", arch}, "")}))
-			remove_recursively(filepath.join({install_path, "Windows Kits/10/bin", sdkv, arch}))
-			remove_recursively(filepath.join({install_path, "Windows Kits/10/Lib", sdkv, "ucrt", arch}))
-			remove_recursively(filepath.join({install_path, "Windows Kits/10/Lib", sdkv, "um", arch}))
-		}
-
-		err := remove_recursively(packages_path)
-		if err != 0 {
-			write_progress(pipe, .Error, fmt.tprint("Failed to clear packages path:", err))
-			return
-		}
 	}
 
 	// 9. Variable preparations
@@ -1230,6 +1244,39 @@ set LIB={}
 		path := add_to_env_if_not_exists(env_path, "%MSVC_BIN%;%SDK_BIN%")
 		if set_env_in_registry("PATH", path, location, true) != .None {
 			write_progress(pipe, .Error, fmt.tprint("Failed to save PATH"))
+		}
+	}
+
+	// 8. Cleanup
+	write_progress(pipe, .Normal, "Doing cleanup...", 95)
+	{
+		remove_recursively(filepath.join({install_path, "Common7"}))
+		remove_recursively(filepath.join({install_path, "VC/Tools/MSVC", msvcv, "Auxiliary"}))
+		remove_recursively(filepath.join({install_path, "VC/Tools/MSVC", msvcv, "lib", target_arch, "store"}))
+		remove_recursively(filepath.join({install_path, "VC/Tools/MSVC", msvcv, "lib", target_arch, "uwp"}))
+
+		msi_glob, _ := filepath.glob(filepath.join({install_path, "*.msi"}))
+		for msi in msi_glob {
+			remove_recursively(msi)
+		}
+
+		remove_recursively(filepath.join({install_path, "Windows Kits/10", "Catalogs"}))
+		remove_recursively(filepath.join({install_path, "Windows Kits/10", "DesignTime"}))
+		remove_recursively(filepath.join({install_path, "Windows Kits/10", "bin", sdkv, "chpe"}))
+		remove_recursively(filepath.join({install_path, "Windows Kits/10", "Lib", sdkv, "ucrt_enclave"}))
+
+		for arch in targets {
+			if arch == target_arch do continue
+
+			remove_recursively(filepath.join({install_path, "VC/Tools/MSVC", msvcv, strings.join({"bin/Host", arch}, "")}))
+			remove_recursively(filepath.join({install_path, "Windows Kits/10/bin", sdkv, arch}))
+			remove_recursively(filepath.join({install_path, "Windows Kits/10/Lib", sdkv, "ucrt", arch}))
+			remove_recursively(filepath.join({install_path, "Windows Kits/10/Lib", sdkv, "um", arch}))
+		}
+
+		if err := remove_recursively(packages_path); err != 0 {
+			write_progress(pipe, .Error, fmt.tprint("Failed to clear packages path:", err))
+			return
 		}
 	}
 
