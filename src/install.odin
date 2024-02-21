@@ -830,23 +830,23 @@ cli :: proc() {
 		usage := `
 usage: PortableBuildTools.exe [cli] [accept_license] [msvc=MSVC version] [sdk=SDK version] [target=x64/x86/arm/arm64] [host=x64/x86] [install_path=.\BuildTools] [script=name] [env=local/global]
 
-*cli: make PortableBultTools run in command-line interface mode
+*cli: make PortableBuildTools run in command-line interface mode
 
-*accept_license: auto-accept the license
+*accept_license: auto-accept the license if including in argument list [default: ask]
 
-*msvc=MSVC version: see GUI application for available versions, defaults to latest
+*msvc=MSVC version: Which MSVC toolchain version to install. See GUI application for available versions [default: latest in GUI]
 
-*sdk=SDK Version: see GUI application for available Windows SDK versions, defaults to latest Windows 10 SDK
+*sdk=SDK Version: Which Windows SDK version to install. See GUI application for available versions [default: latest in GUI]
 
-*target=x64/x86/arm/arm64: defaults to x64
+*target=x64/x86/arm/arm64: [default: x64]
 
-*host=x64/x86: defaults to x64
+*host=x64/x86: [default: x64]
 
-*install_path=path: defaults to C:\BuildTools
+*install_path=path: [default: C:\BuildTools]
 
-*script=filename to give developer command prompt batch file, defaults to devcmd. Do not include .bat extension
+*script=filename to give developer command prompt batch file. Do not include .bat extension [default: devcmd]
 
-*env=local/global: defaults to nothing. If supplied, then the installed path will be added to PATH environment variable, locally (for the current user) or globally (for all users)`
+*env=local/global: If supplied, then the installed path will be added to PATH environment variable, locally (for the current user) or globally (for all users) [default: not set, which means don't add to PATH]`
 		
 		if a != "--help" && a != "/?" && a != "-h" {
 			fmt.printf("Argument {} is unknown\n", arg)
