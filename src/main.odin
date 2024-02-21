@@ -681,9 +681,6 @@ main :: proc() {
 		cli()
 		return
 	}
-
-	// We are not doing CLI, free console so it never is shown.
-	win32.FreeConsole()
 	
 	gui_mode = true
 	install_path = fmt.aprint(DEFAULT_INSTALL_PATH)
@@ -715,6 +712,9 @@ main :: proc() {
 
 	program_icon = win32.LoadIconW(wc.hInstance, L("icon"))
 	win32.SetClassLongPtrW(window_id, win32.GCLP_HICON, auto_cast cast(uintptr)program_icon)
+
+	// We are not doing CLI, free console so it never is shown.
+	win32.FreeConsole()
 
 	msg: win32.MSG = ---
 	for win32.GetMessageW(&msg, nil, 0, 0) {
