@@ -1274,6 +1274,9 @@ set LIB={}
 			remove_recursively(filepath.join({install_path, "Windows Kits/10/Lib", sdkv, "um", arch}))
 		}
 
+		// Remove vctip.exe, so it doesn't start when running cl.exe or link.exe.
+		remove_recursively(filepath.join({msvc_bin, "vctip.exe"}))
+
 		if err := remove_recursively(packages_path); err != 0 {
 			write_progress(pipe, .Error, fmt.tprint("Failed to clear packages path:", err))
 			return
