@@ -18,12 +18,37 @@ import win32 "core:sys/windows"
 
 DEFAULT_INSTALL_PATH :: `C:\BuildTools`
 MANIFEST_URL :: `https://aka.ms/vs/17/release/channel`
-Payload :: struct {
-	file_name: string,
-	url: string,
-	size: i64,
-	sha256: string,
+
+First_Manifest :: struct {
+	channel_items: []struct {
+		id: string `json:"id"`,
+		payloads: []Payload `json:"payloads"`,
+		localized_resources: []struct {
+			language: string,
+			license: string,
+		} `json:"localizedResources"`,
+	} `json:"channelItems"`,
 }
+
+Second_Manifest :: struct {
+	packages: []struct {
+		id: string `json:"id"`,
+		language: string `json:"language"`,
+		dependencies: map[string]json.Value `json:"dependencies"`,
+		chip: string `json:"chip"`,
+		machine_arch: string `json:"machineArch"`,
+		product_arch: string `json:"productArch"`,
+		payloads: []Payload `json:"payloads"`,
+	} `json:"packages"`,
+}
+
+Payload :: struct {
+	file_name: string `json:"fileName"`,
+	sha256: string `json:"sha256"`,
+	size: i64 `json:"size"`,
+	url: string `json:"url"`,
+}
+
 Package_Info :: struct {
 	id: string,
 	version: string,
@@ -51,29 +76,6 @@ tools_info: Tools_Info
 // other architectures may or may not work - not really tested
 hosts: []string = {"x64", "x86"}
 targets: []string = {"x64", "x86", "arm", "arm64"}
-
-msvc_version, sdk_version, target_arch, host_arch: string
-accept_license: bool
-install_path: string
-gui_mode: bool
-
-First_Manifest :: struct {
-	channel_items: []struct {
-		id: string `json:"id"`,
-
-		payloads: []struct {
-			file_name: string `json:"fileName"`,
-			sha256: string `json:"sha256"`,
-			size: int `json:"size"`,
-			url: string `json:"url"`,
-		} `json:"payloads"`,
-
-		localized_resources: []struct {
-			language: string,
-			license: string,
-		} `json:"localizedResources"`,
-	} `json:"channelItems"`,
-}
 
 msvc_packages_selector := []string {
 	// MSVC binaries
@@ -108,14 +110,10 @@ sdk_packages_selector := []string {
 	//"Universal CRT Redistributable-x86_en-us.msi",
 }
 
-// returns false if has anything except numbers and a dot
-is_numeric_version :: proc(s: string) -> bool {
-	for r in s do switch r {
-		case '0'..='9', '.': continue
-		case: return false
-	}
-	return true
-}
+msvc_version, sdk_version, target_arch, host_arch: string
+accept_license: bool
+install_path: string
+gui_mode: bool
 
 get_msi_cabs :: proc(msi: []byte, allocator := context.allocator) -> []string {
 	msi := msi
@@ -147,26 +145,6 @@ get_temp_dir :: proc(allocator := context.allocator) -> (string, runtime.Allocat
 		n -= 1
 	}
 	return win32.utf16_to_utf8(b[:n], allocator)
-}
-
-// Converts package object into an array of Payload
-get_payloads :: proc(pkg: json.Object, allocator := context.allocator) -> (payloads: [dynamic]Payload) {
-	payloads = make([dynamic]Payload, allocator)
-
-	for p in pkg["payloads"].(json.Array) {
-		p := p.(json.Object)
-
-		payload: Payload = {
-			file_name = p["fileName"].(json.String),
-			sha256 = p["sha256"].(json.String),
-			size = i64(p["size"].(json.Float)),
-			url = p["url"].(json.String),
-		}
-
-		append(&payloads, payload)
-	}
-
-	return
 }
 
 write_to_pipe :: #force_inline proc(pipe: win32.HANDLE, message: string) {
@@ -231,25 +209,6 @@ fully_qualify_path :: proc(p: string, allocator := context.allocator) -> string 
 	return filepath.join({cur_dir, p}, allocator)
 }
 
-copy_file :: proc(from, to: string) -> i32 {
-	from := from
-	to := to
-	from = fully_qualify_path(from, context.temp_allocator)
-	to = fully_qualify_path(to, context.temp_allocator)
-
-	file_op: win32.SHFILEOPSTRUCTW = {
-		nil,
-		win32.FO_COPY,
-		win32.utf8_to_wstring(fmt.tprintf("{}\x00", from)), // the string must be double-null terminated
-		win32.utf8_to_wstring(fmt.tprintf("{}\x00", to)),
-		win32.FOF_NOCONFIRMATION | win32.FOF_NOERRORUI | win32.FOF_SILENT,
-		false,
-		nil,
-		nil,
-	}
-	return win32.SHFileOperationW(&file_op)
-}
-
 move_file :: proc(from, to: string) -> i32 {
 	from := from
 	to := to
@@ -272,9 +231,7 @@ move_file :: proc(from, to: string) -> i32 {
 // Downloads info to temp directory
 download_info :: proc(pipe: win32.HANDLE = nil, allocator := context.allocator) -> Maybe(string) {
 	arena: virtual.Arena
-	// I hope Microsoft doesn't make their .json files bigger than this
-	// But who knows, might need to bump up to 64GB later
-	_ = virtual.arena_init_static(&arena, 4 * mem.Gigabyte)
+	_ = virtual.arena_init_static(&arena, 16 * mem.Gigabyte)
 	defer virtual.arena_destroy(&arena)
 	context.allocator = virtual.arena_allocator(&arena)
 
@@ -293,12 +250,9 @@ download_info :: proc(pipe: win32.HANDLE = nil, allocator := context.allocator) 
 	write_progress(pipe, .Unknown, "Downloading first manifest...")
 
 	first_manifest_path := filepath.join({temp_dir, "VSManifest.json"})
-	{
-		ok := download_file(pipe = pipe, url = MANIFEST_URL, to = first_manifest_path)
-		if !ok {
-			write_progress(pipe, .Error, fmt.tprint("Downloading first manifest failed with code:", win32.GetLastError()))
-			return nil
-		}
+	if !download_file(pipe = pipe, url = MANIFEST_URL, to = first_manifest_path) {
+		write_progress(pipe, .Error, fmt.tprint("Downloading first manifest failed with code:", win32.GetLastError()))
+		return nil
 	}
 
 	// 2. Parse manifest file, get license url and second manifest url
@@ -312,8 +266,7 @@ download_info :: proc(pipe: win32.HANDLE = nil, allocator := context.allocator) 
 			return nil
 		}
 
-		err := json.unmarshal(data, &first_manifest)
-		if err != nil {
+		if err := json.unmarshal(data, &first_manifest); err != nil {
 			write_progress(pipe, .Error, fmt.tprint("First manifest unmarshal error:", err))
 			return nil
 		}
@@ -323,12 +276,12 @@ download_info :: proc(pipe: win32.HANDLE = nil, allocator := context.allocator) 
 	second_manifest_name: string
 	// NOTE: Seems that manifest reports the size wrong, unless I'm supposed to do some conversion or something.
 	// Thus, this is more of a suggestion, not an actual accurate size.
-	second_manifest_size: int
+	second_manifest_size: i64
 	license_url: string
 	{
 		write_progress(pipe, .Normal, "Parsing...", 20)
 
-		OUTER: for i in first_manifest.channel_items {
+		for i in first_manifest.channel_items {
 			switch i.id {
 			case "Microsoft.VisualStudio.Product.BuildTools":
 				for r in i.localized_resources {
@@ -349,18 +302,15 @@ download_info :: proc(pipe: win32.HANDLE = nil, allocator := context.allocator) 
 	write_progress(pipe, .Unknown, "Downloading second manifest...")
 
 	second_manifest_path := filepath.join({temp_dir, second_manifest_name})
-	{
-		ok := download_file(pipe = pipe, url = second_manifest_url, to = second_manifest_path, total_size = cast(uint)second_manifest_size)
-		if !ok {
-			write_progress(pipe, .Error, fmt.tprint("Downloading second manifest failed with code:", win32.GetLastError()))
-			return nil
-		}
+	if !download_file(pipe = pipe, url = second_manifest_url, to = second_manifest_path, total_size = cast(uint)second_manifest_size) {
+		write_progress(pipe, .Error, fmt.tprint("Downloading second manifest failed with code:", win32.GetLastError()))
+		return nil
 	}
 
 	// 4. Parse second manifest file, get versions and packages
 	write_progress(pipe, .Normal, "Reading...", 40)
 
-	second_manifest: json.Value
+	second_manifest: Second_Manifest
 	{
 		data, ok := os.read_entire_file(second_manifest_path)
 		if !ok {
@@ -368,9 +318,7 @@ download_info :: proc(pipe: win32.HANDLE = nil, allocator := context.allocator) 
 			return nil
 		}
 
-		err: json.Error
-		second_manifest, err = json.parse(data)
-		if err != nil {
+		if err := json.unmarshal(data, &second_manifest); err != nil {
 			write_progress(pipe, .Error, fmt.tprint("Second manifest unmarshal error:", err))
 			return nil
 		}
@@ -385,13 +333,18 @@ download_info :: proc(pipe: win32.HANDLE = nil, allocator := context.allocator) 
 	{
 		write_progress(pipe, .Normal, "Parsing...", 50)
 
-		manifest_packages := second_manifest.(json.Object)["packages"].(json.Array)
+		// returns false if has anything except numbers and a dot
+		is_numeric_version :: proc(s: string) -> bool {
+			for r in s do switch r {
+				case '0'..='9', '.': continue
+				case: return false
+			}
+			return true
+		}
 
-		// Collect all possible verions
-		for pkg in manifest_packages {
-			pkg := pkg.(json.Object)
-			pkg_id := pkg["id"].(json.String)
-			id := strings.to_lower(pkg_id, context.temp_allocator)
+		// Collect all possible versions
+		for pkg in second_manifest.packages {
+			id := strings.to_lower(pkg.id, context.temp_allocator)
 
 			if strings.has_prefix(id, "microsoft.visualstudio.component.vc.") && strings.has_suffix(id, ".x86.x64") {
 				fields := strings.split(id, ".", context.temp_allocator)
@@ -410,9 +363,8 @@ download_info :: proc(pipe: win32.HANDLE = nil, allocator := context.allocator) 
 				if len(fields) < 5 do continue
 				if !is_numeric_version(fields[4]) do continue
 
-				deps := pkg["dependencies"].(json.Object)
-				// NOTE: length should always be 1
-				keys, _ := slice.map_keys(deps, context.temp_allocator)
+				// NOTE: pkg.dependencies length should always be 1
+				keys, _ := slice.map_keys(pkg.dependencies, context.temp_allocator)
 				pid := strings.clone(keys[0])
 				ver := strings.clone(fields[4])
 
@@ -424,22 +376,18 @@ download_info :: proc(pipe: win32.HANDLE = nil, allocator := context.allocator) 
 
 		write_progress(pipe, .Normal, "Parsing MSVC packages...", 60)
 		// Collect all MSVC packages
-		for pkg in manifest_packages {
-			pkg := pkg.(json.Object)
-			pkg_id := pkg["id"].(json.String)
+		for pkg in second_manifest.packages {
+			// Do not add packages that have a language field that is not english
+			if pkg.language != "" && pkg.language != "en-US" do continue
 
-			// Do not add packages that have language field that is not english
-			if "language" in pkg && pkg["language"].(json.String) != "" && pkg["language"].(json.String) != "en-US" do continue
-
-			id := strings.to_lower(pkg_id, context.temp_allocator)
+			id := strings.to_lower(pkg.id, context.temp_allocator)
 
 			if id == "microsoft.visualcpp.runtimedebug.14" {
 				debug_package := Debug_Package_Info{
-					host = pkg["chip"].(json.String),
+					host = pkg.chip,
 				}
 
-				payloads := get_payloads(pkg)
-				debug_package.payloads = payloads[:]
+				debug_package.payloads = pkg.payloads
 				append(&debug_crt_runtime, debug_package)
 				continue
 			}
@@ -450,11 +398,10 @@ download_info :: proc(pipe: win32.HANDLE = nil, allocator := context.allocator) 
 				if !strings.contains(pid, "{TARGET}") {
 					if pid != id do continue
 
-					payloads := get_payloads(pkg)
 					append(&msvc_packages, Package_Info{
-						id = pkg_id,
+						id = pkg.id,
 						version = ver,
-						payloads = payloads[:],
+						payloads = pkg.payloads,
 					})
 
 					continue
@@ -466,12 +413,11 @@ download_info :: proc(pipe: win32.HANDLE = nil, allocator := context.allocator) 
 					if !strings.contains(pid, "{HOST}") {
 						if pid != id do continue
 
-						payloads := get_payloads(pkg)
 						append(&msvc_packages, Package_Info{
-							id = pkg_id,
+							id = pkg.id,
 							version = ver,
 							target = target,
-							payloads = payloads[:],
+							payloads = pkg.payloads,
 						})
 
 						continue
@@ -481,13 +427,12 @@ download_info :: proc(pipe: win32.HANDLE = nil, allocator := context.allocator) 
 						pid, _ := strings.replace_all(pid, "{HOST}", host, context.temp_allocator)
 						if pid != id do continue
 
-						payloads := get_payloads(pkg)
 						append(&msvc_packages, Package_Info{
-							id = pkg_id,
+							id = pkg.id,
 							version = ver,
 							target = target,
 							host = host,
-							payloads = payloads[:],
+							payloads = pkg.payloads,
 						})
 					}
 				}
@@ -496,23 +441,14 @@ download_info :: proc(pipe: win32.HANDLE = nil, allocator := context.allocator) 
 
 		write_progress(pipe, .Normal, "Parsing SDK packages...", 70)
 		// Collect all SDK packages
-		for pkg in manifest_packages {
-			pkg := pkg.(json.Object)
-			pkg_id := pkg["id"].(json.String)
-
+		for pkg in second_manifest.packages {
 			for ver, index in sdk_versions {
 				pid := sdk_long_versions[index]
 
-				if pkg_id != pid do continue
+				if pkg.id != pid do continue
 
-				payloads := get_payloads(pkg)
-
-				target: string
-				if "machineArch" in pkg do target = pkg["machineArch"].(json.String)
-				target = strings.to_lower(target)
-
-				host: string
-				if "productArch" in pkg do host = pkg["productArch"].(json.String)
+				target := strings.to_lower(pkg.machine_arch)
+				host := pkg.product_arch
 				switch strings.to_lower(host, context.temp_allocator) {
 				case "", "neutral": host = ""
 				case: host = strings.to_lower(host)
@@ -523,7 +459,7 @@ download_info :: proc(pipe: win32.HANDLE = nil, allocator := context.allocator) 
 					version = ver,
 					target = target,
 					host = host,
-					payloads = payloads[:],
+					payloads = pkg.payloads,
 				})
 			}
 		}
@@ -759,24 +695,6 @@ install_msi_package :: proc(pipe: win32.HANDLE, msi_path, install_path: string) 
 		cbSize = size_of(win32.SHELLEXECUTEINFOW),
 		fMask = win32.SEE_MASK_NOCLOSEPROCESS,
 		lpFile = L("msiexec.exe"),
-		lpParameters = win32.utf8_to_wstring(params),
-		nShow = win32.SW_SHOW,
-	}
-	ok := win32.ShellExecuteExW(&ShExecInfo)
-	if !ok {
-		return false
-	}
-	win32.WaitForSingleObject(ShExecInfo.hProcess, win32.INFINITE)
-	return true
-}
-
-install_debug_runtime :: proc(pipe: win32.HANDLE, cab_path, install_path: string) -> bool {
-	params := fmt.tprintf(`"{}" -F:* "{}"`, cab_path, fully_qualify_path(install_path, context.temp_allocator))
-
-	ShExecInfo: win32.SHELLEXECUTEINFOW = {
-		cbSize = size_of(win32.SHELLEXECUTEINFOW),
-		fMask = win32.SEE_MASK_NOCLOSEPROCESS,
-		lpFile = L("expand.exe"),
 		lpParameters = win32.utf8_to_wstring(params),
 		nShow = win32.SW_SHOW,
 	}
