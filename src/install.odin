@@ -71,6 +71,7 @@ Tools_Info :: struct {
 	sdk_packages: []Package_Info,
 
 	debug_crt_runtime: []Debug_Package_Info,
+	dia_sdk:  []Payload,
 }
 tools_info: Tools_Info
 // other architectures may or may not work - not really tested
@@ -330,6 +331,7 @@ download_info :: proc(pipe: win32.HANDLE = nil, allocator := context.allocator) 
 	msvc_packages := make([dynamic]Package_Info)
 	sdk_packages := make([dynamic]Package_Info)
 	debug_crt_runtime := make([dynamic]Debug_Package_Info)
+	dia_sdk: []Payload
 	{
 		write_progress(pipe, .Normal, "Parsing...", 50)
 
@@ -389,6 +391,11 @@ download_info :: proc(pipe: win32.HANDLE = nil, allocator := context.allocator) 
 
 				debug_package.payloads = pkg.payloads
 				append(&debug_crt_runtime, debug_package)
+				continue
+			}
+			
+			if id == "microsoft.visualc.140.dia.sdk.msi" {
+				dia_sdk = pkg.payloads
 				continue
 			}
 
@@ -473,6 +480,7 @@ download_info :: proc(pipe: win32.HANDLE = nil, allocator := context.allocator) 
 		msvc_packages = msvc_packages[:],
 		sdk_packages = sdk_packages[:],
 		debug_crt_runtime = debug_crt_runtime[:],
+		dia_sdk = dia_sdk,
 	}
 
 	info_path: string
@@ -647,7 +655,7 @@ remove_recursively :: proc(p: string) -> i32 {
 	return win32.SHFileOperationW(&file_op)
 }
 
-unpack_msvc_package :: proc(pipe: win32.HANDLE, src, dst: string) -> bool {
+unpack_msvc_package :: proc(src, dst: string) -> bool {
 	FILE_NAME_BUFFER_SIZE :: 512
 	file_name_buffer: [FILE_NAME_BUFFER_SIZE]byte
 
@@ -688,7 +696,7 @@ unpack_msvc_package :: proc(pipe: win32.HANDLE, src, dst: string) -> bool {
 	return result
 }
 
-install_msi_package :: proc(pipe: win32.HANDLE, msi_path, install_path: string) -> bool {
+install_msi_package :: proc(msi_path, install_path: string) -> bool {
 	params := fmt.tprintf(`/a "{}" /quiet /qn TARGETDIR="{}"`, fully_qualify_path(msi_path, context.temp_allocator), fully_qualify_path(install_path, context.temp_allocator))
 
 	ShExecInfo: win32.SHELLEXECUTEINFOW = {
@@ -900,7 +908,7 @@ usage: PortableBuildTools.exe [cli] [accept_license] [msvc=MSVC version] [sdk=SD
 	}
 
 	// 3. Download msvc packages
-	write_progress(pipe, .Normal, "Downloading MSVC packages...", 10)
+	write_progress(pipe, .Normal, "Downloading and installing MSVC packages...", 10)
 	for p in tools_info.msvc_packages {
 		if p.version != "" && p.version != msvc_version do continue
 		if p.target != "" && p.target != target_arch do continue
@@ -915,7 +923,7 @@ usage: PortableBuildTools.exe [cli] [accept_license] [msvc=MSVC version] [sdk=SD
 			}
 
 			package_path := filepath.join({packages_path, payload.file_name}, context.temp_allocator)
-			if !unpack_msvc_package(pipe = pipe, src = package_path, dst = install_path) {
+			if !unpack_msvc_package(src = package_path, dst = install_path) {
 				write_progress(pipe, .Error, fmt.tprint("Failed to unpack msvc package:", package_path))
 				return
 			}
@@ -956,9 +964,9 @@ usage: PortableBuildTools.exe [cli] [accept_license] [msvc=MSVC version] [sdk=SD
 			append(&cabs, ..package_cabs[:])
 			append(&msis, strings.trim_prefix(payload.file_name, `Installers\`))
 		}
+		write_progress(pipe, .Normal, "", 60)
 
 		// 5. Download needed cabs
-		write_progress(pipe, .Normal, "Downloading CAB packages...", 70)
 		for payload in p.payloads do for cab in cabs {
 			if !strings.has_suffix(payload.file_name, cab) {
 				continue
@@ -974,13 +982,13 @@ usage: PortableBuildTools.exe [cli] [accept_license] [msvc=MSVC version] [sdk=SD
 	}
 
 	// 6. Install msi packages
-	write_progress(pipe, .Normal, "Installing MSI packages...", 80)
+	write_progress(pipe, .Normal, "Installing SDK packages...", 70)
 	for msi, idx in msis {
 		msi_path := filepath.join({packages_path, msi}, context.temp_allocator)
 
 		write_progress(pipe, .Normal, fmt.tprint(filepath.base(msi_path)))
 
-		if !install_msi_package(pipe, msi_path, install_path) {
+		if !install_msi_package(msi_path, install_path) {
 			write_progress(pipe, .Error, fmt.tprint("Failed to install msi:", msi))
 			return
 		}
@@ -991,13 +999,19 @@ usage: PortableBuildTools.exe [cli] [accept_license] [msvc=MSVC version] [sdk=SD
 	msvcv := filepath.base(msvcv_matches[0])
 	sdkv := filepath.base(sdkv_matches[0])
 
+	dst := filepath.join({install_path, "VC/Tools/MSVC", msvcv, strings.join({"bin/Host", host_arch}, ""), target_arch})
+	if err := make_directory_always(dst); err != 0 {
+		write_progress(pipe, .Error, fmt.tprint("Failed to create debug packages path:", err))
+		return
+	}
+
 	// 7. Download and install debug crt runtime
 	for debug_package in tools_info.debug_crt_runtime {
 		if debug_package.host != host_arch {
 			continue
 		}
 
-		write_progress(pipe, .Normal, "Installing debug runtime...", 85)
+		write_progress(pipe, .Normal, "Installing debug runtime...", 80)
 
 		for payload in debug_package.payloads {
 			if !download_payload(pipe, payload, packages_path) {
@@ -1006,11 +1020,6 @@ usage: PortableBuildTools.exe [cli] [accept_license] [msvc=MSVC version] [sdk=SD
 			}
 		}
 
-		dst := filepath.join({install_path, "VC/Tools/MSVC", msvcv, strings.join({"bin/Host", host_arch}, ""), target_arch})
-		if err := make_directory_always(dst); err != 0 {
-			write_progress(pipe, .Error, fmt.tprint("Failed to create debug package path:", err))
-			return
-		}
 		dst_tmp := filepath.join({packages_path, "TMP_DBG"}, context.temp_allocator)
 		if err := make_directory_always(dst_tmp); err != 0 {
 			write_progress(pipe, .Error, fmt.tprint("Failed to create temporary debug package path:", err))
@@ -1025,7 +1034,7 @@ usage: PortableBuildTools.exe [cli] [accept_license] [msvc=MSVC version] [sdk=SD
 			}
 		}
 		msi_path := filepath.join({packages_path, msi}, context.temp_allocator)
-		if !install_msi_package(pipe, msi_path, dst_tmp) {
+		if !install_msi_package(msi_path, dst_tmp) {
 			write_progress(pipe, .Error, fmt.tprint("Failed to install msi:", msi))
 			return
 		}
@@ -1054,10 +1063,54 @@ usage: PortableBuildTools.exe [cli] [accept_license] [msvc=MSVC version] [sdk=SD
 		break
 	}
 
-	// TODO: In accordance with Martin's script DIA SDK needs to be added here
-	// https://gist.github.com/mmozeiko/7f3162ec2988e81e56d5c4e22cde9977/revisions#diff-a6303b82561a4061c71e8838976143f06f295cc9a8a60cf53fc170cb5b9f3f1dR250-R271
+	// 8. Download and install DIA SDK
 	{
-		//write_progress(pipe, .Normal, "Installing DIA SDK...", 90)
+		write_progress(pipe, .Normal, "Installing DIA SDK...", 90)
+		
+		for payload in tools_info.dia_sdk {
+			if !download_payload(pipe, payload, packages_path) {
+				write_progress(pipe, .Error, fmt.tprint("Failed to download DIA package:", payload.file_name, payload.url))
+				return
+			}
+		}
+
+		dst_tmp := filepath.join({packages_path, "TMP_DIA"}, context.temp_allocator)
+		if err := make_directory_always(dst_tmp); err != 0 {
+			write_progress(pipe, .Error, fmt.tprint("Failed to create temporary DIA package path:", err))
+			return
+		}
+
+		msi: string
+		for payload in tools_info.dia_sdk {
+			if strings.has_suffix(payload.file_name, ".msi") {
+				msi = payload.file_name
+				break
+			}
+		}
+		msi_path := filepath.join({packages_path, msi}, context.temp_allocator)
+		if !install_msi_package(msi_path, dst_tmp) {
+			write_progress(pipe, .Error, fmt.tprint("Failed to install msi:", msi))
+			return
+		}
+
+		dia_path: string
+		switch host_arch {
+		case "x86":
+			dia_path = filepath.join(
+				{dst_tmp, "Program Files", "Microsoft Visual Studio 14.0", "DIA SDK", "bin", "msdia140.dll"},
+				context.temp_allocator,
+			)
+		case "x64":
+			dia_path = filepath.join(
+				{dst_tmp, "Program Files", "Microsoft Visual Studio 14.0", "DIA SDK", "bin", "amd64", "msdia140.dll"},
+				context.temp_allocator,
+			)
+		}
+
+		if move_file(dia_path, filepath.join({dst, "msdia140.dll"}, context.temp_allocator)) != 0 {
+			write_progress(pipe, .Error, fmt.tprint("Failed to move file:", dia_path))
+			return
+		}
 	}
 
 	// 9. Variable preparations
@@ -1128,7 +1181,7 @@ set LIB={}
 
 		location: Env_Location = .Global if env_type == "global" else .Local
 
-		// These 3 are for Odin, but they are not necessary.
+		// These are for the Odin compiler and other tools, but they are not necessary
 		if set_env_in_registry("VCToolsInstallDir", vc_tools_install_dir, location) != .None {
 			write_progress(pipe, .Error, fmt.tprint("Failed to save VCToolsInstallDir"))
 		}
@@ -1157,13 +1210,25 @@ set LIB={}
 			write_progress(pipe, .Error, fmt.tprint("Failed to save SDK_BIN"))
 		}
 
+		// Add SDK_BIN and MSVC_BIN to PATH if they are not already there
 		env_path, err := get_env_from_registry("PATH", location)
 		if err != .None && err != .Not_Found {
 			write_progress(pipe, .Error, fmt.tprint("Failed to get PATH"))
 			break ADD_TO_ENV
 		}
+		path_entries := make([dynamic]string, context.temp_allocator)
+		for e in strings.split_iterator(&env_path, ";") {
+			append(&path_entries, e)
+		}
 
-		path := add_to_env_if_not_exists(env_path, "%MSVC_BIN%;%SDK_BIN%")
+		bin_paths := "%MSVC_BIN%;%SDK_BIN%"
+		for e in strings.split_iterator(&bin_paths, ";") {
+			if !slice.contains(path_entries[:], e) {
+				append(&path_entries, e)
+			}
+		}
+
+		path := strings.join(path_entries[:], ";", allocator = context.temp_allocator)
 		if set_env_in_registry("PATH", path, location, true) != .None {
 			write_progress(pipe, .Error, fmt.tprint("Failed to save PATH"))
 		}
@@ -1188,12 +1253,13 @@ set LIB={}
 		remove_recursively(filepath.join({install_path, "Windows Kits/10", "Lib", sdkv, "ucrt_enclave"}))
 
 		for arch in targets {
-			if arch == target_arch do continue
-
-			remove_recursively(filepath.join({install_path, "VC/Tools/MSVC", msvcv, strings.join({"bin/Host", arch}, "")}))
-			remove_recursively(filepath.join({install_path, "Windows Kits/10/bin", sdkv, arch}))
-			remove_recursively(filepath.join({install_path, "Windows Kits/10/Lib", sdkv, "ucrt", arch}))
-			remove_recursively(filepath.join({install_path, "Windows Kits/10/Lib", sdkv, "um", arch}))
+			if arch != target_arch {
+				remove_recursively(filepath.join({install_path, "Windows Kits/10/Lib", sdkv, "ucrt", arch}))
+				remove_recursively(filepath.join({install_path, "Windows Kits/10/Lib", sdkv, "um", arch}))
+			}
+			if arch != host_arch {
+				remove_recursively(filepath.join({install_path, "Windows Kits/10/bin", sdkv, arch}))
+			}
 		}
 
 		// Remove vctip.exe, so it doesn't start when running cl.exe or link.exe.

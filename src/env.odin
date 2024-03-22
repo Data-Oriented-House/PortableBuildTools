@@ -25,15 +25,6 @@ Env_Error :: enum {
 	Access_Denied,
 }
 
-add_to_env_if_not_exists :: proc(env, s: string, allocator := context.allocator) -> string {
-	env := env
-
-	entries := make([dynamic]string, context.temp_allocator)
-	for v in strings.split_iterator(&env, ";") do append(&entries, v)
-	if !slice.contains(entries[:], s) do append(&entries, s)
-	return strings.join(entries[:], ";", allocator)
-}
-
 get_env_from_registry :: proc(env: string, location: Env_Location, allocator := context.temp_allocator) -> (string, Env_Error) {
 	env_buf: [MAX_ENV_LEN]win32.WCHAR
 	env_size := win32.DWORD(size_of(win32.WCHAR) * MAX_ENV_LEN)
