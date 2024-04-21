@@ -794,7 +794,7 @@ usage: PortableBuildTools.exe [cli] [accept_license] [msvc=MSVC version] [sdk=SD
 
 *install_path=path: [default: C:\BuildTools]
 
-*script=filename to give developer command prompt batch file. Do not include .bat extension [default: devcmd]
+*script=filename to give developer command prompt batch and Powershell files. Do not include .bat or .ps1 extensions [default: devcmd]
 
 *env=local/global: If supplied, then the installed path will be added to PATH environment variable, locally (for the current user) or globally (for all users) [default: not set, which means don't add to PATH]`
 		
@@ -1155,7 +1155,7 @@ usage: PortableBuildTools.exe [cli] [accept_license] [msvc=MSVC version] [sdk=SD
 	if script_name != "" {
 		write_progress(pipe, .Normal, "Creating setup script...")
 
-SETUP_SCRIPT :: `@echo off
+		SETUP_SCRIPT_BAT :: `@echo off
 
 set WindowsSDKDir={}
 set WindowsSDKVersion={}
@@ -1169,10 +1169,27 @@ set INCLUDE={}
 set LIB={}
 `
 
-		data := fmt.aprintf(SETUP_SCRIPT, sdk_dir, sdkv, vc_tools_install_dir, target_arch, msvc_bin, sdk_bin, include, lib)
-		file_name := fmt.tprintf("{}.bat", script_name)
-		file_path := filepath.join({install_path, file_name})
-		os.write_entire_file(file_path, transmute([]byte)data)
+		SETUP_SCRIPT_PWSH :: `$env:WindowsSDKDir="{}"
+$env:WindowsSDKVersion="{}"
+$env:VCToolsInstallDir="{}"
+$env:VSCMD_ARG_TGT_ARCH="{}"
+
+$env:MSVC_BIN="{}"
+$env:SDK_BIN="{}"
+$env:PATH="$env:MSVC_BIN;$env:SDK_BIN;$env:PATH"
+$env:INCLUDE="{}"
+$env:LIB="{}"
+`
+
+		create_script_file :: proc(setup_script, script_name, extension, sdk_dir, sdkv, vc_tools_install_dir, target_arch, msvc_bin, sdk_bin, include, lib: string) {
+			data := fmt.aprintf(setup_script, sdk_dir, sdkv, vc_tools_install_dir, target_arch, msvc_bin, sdk_bin, include, lib)
+			file_name := fmt.tprintf("{}.{}", script_name, extension)
+			file_path := filepath.join({install_path, file_name})
+			os.write_entire_file(file_path, transmute([]byte)data)
+		}
+
+		create_script_file(SETUP_SCRIPT_BAT,  script_name, "bat", sdk_dir, sdkv, vc_tools_install_dir, target_arch, msvc_bin, sdk_bin, include, lib);
+		create_script_file(SETUP_SCRIPT_PWSH, script_name, "ps1", sdk_dir, sdkv, vc_tools_install_dir, target_arch, msvc_bin, sdk_bin, include, lib);
 	}
 
 	// 11. Adding to environment if needed
