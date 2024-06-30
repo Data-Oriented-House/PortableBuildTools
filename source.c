@@ -1237,28 +1237,24 @@ bool download_file(const char* file_url, const char* file_path, i64 size, const 
 		return (false);
 	}
 //[c]	NOTE: This allows SSL validation failure in certain cases for certain people
-	bool retry = false;
 	do {
-		if(WinHttpSendRequest(request, WINHTTP_NO_ADDITIONAL_HEADERS, 0, null, 0, 0, 0)) {
+		if (WinHttpSendRequest(request, WINHTTP_NO_ADDITIONAL_HEADERS, 0, null, 0, 0, 0)) {
 			break;
 		}
 		DWORD err = GetLastError();
 //[c]		Negotiate authorization handshakes may return this error and require multiple attempts
-//[c]		http://msdn.microsoft.com/en-us/library/windows/desktop/aa383144%28v=vs.85%29.aspx
+//[c]		https://learn.microsoft.com/en-gb/windows/win32/winhttp/authentication-in-winhttp?redirectedfrom=MSDN
 		if (err == ERROR_WINHTTP_RESEND_REQUEST) {
-			retry = true;
 			continue;
 		}
 //[c]		If you want to allow SSL certificate errors and continue with the connection, you must allow and initial failure and then reset the security flags.
-//[c]		From: "HOWTO: Handle Invalid Certificate Authority Error with WinInet"
-//[c]		http://support.microsoft.com/default.aspx?scid=kb;EN-US;182888
-		if(err == ERROR_WINHTTP_SECURE_FAILURE) {
+//[c]		https://www.experts-exchange.com/questions/23009380/How-To-Handle-Invalid-Certificate-Authority-Error-with-WinInet.html
+		if (err == ERROR_WINHTTP_SECURE_FAILURE) {
 			DWORD flags = SECURITY_FLAG_IGNORE_UNKNOWN_CA |
 				SECURITY_FLAG_IGNORE_CERT_WRONG_USAGE |
 				SECURITY_FLAG_IGNORE_CERT_CN_INVALID |
 				SECURITY_FLAG_IGNORE_CERT_DATE_INVALID;
-			if(WinHttpSetOption(request, WINHTTP_OPTION_SECURITY_FLAGS, &flags, size_of(flags))) {
-				retry = true;
+			if (WinHttpSetOption(request, WINHTTP_OPTION_SECURITY_FLAGS, &flags, size_of(flags))) {
 				continue;
 			}
 		}
@@ -1266,7 +1262,7 @@ bool download_file(const char* file_url, const char* file_path, i64 size, const 
 		WinHttpCloseHandle(request);
 		WinHttpCloseHandle(connection);
 		return (false);
-	} while(retry);
+	} while (true);
 	if (!WinHttpReceiveResponse(request, null)) {
 		println("receive response failed");
 		WinHttpCloseHandle(request);
