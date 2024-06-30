@@ -1,0 +1,17 @@
+// Project Specific Options
+
+def folders
+	BuildTools	= C:\BuildTools
+end
+
+def tools
+	def build-pbt
+		caption = Build PBT
+		directory = W:\dev\PortableBuildTools
+		command = cmd.exe
+		arguments = /c build.bat
+		save-all = true
+		auto-close = true
+		hot-key = F5
+	end
+end

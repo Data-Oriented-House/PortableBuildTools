@@ -11,9 +11,11 @@ Download [latest release](https://github.com/Data-Oriented-House/PortableBuildTo
 
 ![Screenshot](gui.png)
 
+**[NOTE]** Windows 7 users should not install SDK starting with 26100, those do not work anymore.
+
 ## Command-Line Interface
 
-The program also has a command-line interface. Run it with --help to see usage.
+The program also has a command-line interface. Run it with `?` to see usage.
 
 ## Credits
 

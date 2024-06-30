@@ -1087,7 +1087,7 @@ BOOL WINAPI window_proc(HWND dlg, UINT message, WPARAM wparam, LPARAM lparam)
 					} else {
 						WCHAR wpath[MAX_PATH];
 						ut8_to_utf16(install_path, -1, wpath, MAX_PATH);
-						if (CreateDirectoryW(wpath, null)) {
+						if (!CreateDirectoryW(wpath, null)) {
 							if (GetLastError() != ERROR_ACCESS_DENIED) {
 								MessageBoxW(dlg, L"Destination folder cannot be made", null, MB_TOPMOST | MB_ICONERROR);
 								break;
@@ -1225,27 +1225,52 @@ bool download_file(const char* file_url, const char* file_path, i64 size, const 
 	WCHAR wurl_tail [L_MAX_URL_LENGTH];
 	ut8_to_utf16(url_base, -1, wurl_base, count_of(wurl_base));
 	ut8_to_utf16(url_tail, -1, wurl_tail, count_of(wurl_tail));
-	HINTERNET hconnect = WinHttpConnect(internet_session, wurl_base, INTERNET_DEFAULT_HTTPS_PORT, 0);
-	if (hconnect == null) {
+	HINTERNET connection = WinHttpConnect(internet_session, wurl_base, INTERNET_DEFAULT_HTTPS_PORT, 0);
+	if (connection == null) {
 		println("connect failed");
 		return (false);
 	}
-	HINTERNET hrequest = WinHttpOpenRequest(hconnect, L"GET", wurl_tail, null, null, null, WINHTTP_FLAG_SECURE);
-	if (hrequest == null) {
+	HINTERNET request = WinHttpOpenRequest(connection, L"GET", wurl_tail, null, null, null, WINHTTP_FLAG_SECURE);
+	if (request == null) {
 		println("open request failed");
-		WinHttpCloseHandle(hconnect);
+		WinHttpCloseHandle(connection);
 		return (false);
 	}
-	if (!WinHttpSendRequest(hrequest, null, 0, null, 0, 0, 0)) {
+//[c]	NOTE: This allows SSL validation failure in certain cases for certain people
+	bool retry = false;
+	do {
+		if(WinHttpSendRequest(request, WINHTTP_NO_ADDITIONAL_HEADERS, 0, null, 0, 0, 0)) {
+			break;
+		}
+		DWORD err = GetLastError();
+//[c]		Negotiate authorization handshakes may return this error and require multiple attempts
+//[c]		http://msdn.microsoft.com/en-us/library/windows/desktop/aa383144%28v=vs.85%29.aspx
+		if (err == ERROR_WINHTTP_RESEND_REQUEST) {
+			retry = true;
+			continue;
+		}
+//[c]		If you want to allow SSL certificate errors and continue with the connection, you must allow and initial failure and then reset the security flags.
+//[c]		From: "HOWTO: Handle Invalid Certificate Authority Error with WinInet"
+//[c]		http://support.microsoft.com/default.aspx?scid=kb;EN-US;182888
+		if(err == ERROR_WINHTTP_SECURE_FAILURE) {
+			DWORD flags = SECURITY_FLAG_IGNORE_UNKNOWN_CA |
+				SECURITY_FLAG_IGNORE_CERT_WRONG_USAGE |
+				SECURITY_FLAG_IGNORE_CERT_CN_INVALID |
+				SECURITY_FLAG_IGNORE_CERT_DATE_INVALID;
+			if(WinHttpSetOption(request, WINHTTP_OPTION_SECURITY_FLAGS, &flags, size_of(flags))) {
+				retry = true;
+				continue;
+			}
+		}
 		println("send request failed");
-		WinHttpCloseHandle(hrequest);
-		WinHttpCloseHandle(hconnect);
+		WinHttpCloseHandle(request);
+		WinHttpCloseHandle(connection);
 		return (false);
-	}
-	if (!WinHttpReceiveResponse(hrequest, null)) {
+	} while(retry);
+	if (!WinHttpReceiveResponse(request, null)) {
 		println("receive response failed");
-		WinHttpCloseHandle(hrequest);
-		WinHttpCloseHandle(hconnect);
+		WinHttpCloseHandle(request);
+		WinHttpCloseHandle(connection);
 		return (false);
 	}
 	file_create(file_path);
@@ -1254,9 +1279,9 @@ bool download_file(const char* file_url, const char* file_path, i64 size, const 
 	char chunk[16 * mem_page_size];
 	while (true) {
 		DWORD chunk_size = 0;
-		if (!WinHttpQueryDataAvailable(hrequest, &chunk_size)) {
-			WinHttpCloseHandle(hrequest);
-			WinHttpCloseHandle(hconnect);
+		if (!WinHttpQueryDataAvailable(request, &chunk_size)) {
+			WinHttpCloseHandle(request);
+			WinHttpCloseHandle(connection);
 			println("query data failed");
 			return (false);
 		}
@@ -1264,10 +1289,10 @@ bool download_file(const char* file_url, const char* file_path, i64 size, const 
 			break;
 		}
 		chunk_size = 0;
-		if (!WinHttpReadData(hrequest, chunk, count_of(chunk), &chunk_size)) {
+		if (!WinHttpReadData(request, chunk, count_of(chunk), &chunk_size)) {
 			println("read data failed");
-			WinHttpCloseHandle(hrequest);
-			WinHttpCloseHandle(hconnect);
+			WinHttpCloseHandle(request);
+			WinHttpCloseHandle(connection);
 			return (false);
 		}
 		current_size += chunk_size;
@@ -1285,8 +1310,8 @@ bool download_file(const char* file_url, const char* file_path, i64 size, const 
 	}
 	println("");
 	file_close(&f);
-	WinHttpCloseHandle(hrequest);
-	WinHttpCloseHandle(hconnect);
+	WinHttpCloseHandle(request);
+	WinHttpCloseHandle(connection);
 	return (true);
 }
 
@@ -1505,7 +1530,7 @@ int start(void)
 				msvc_pkg = string_is(id_lower, asan[1]) ? true : msvc_pkg;
 				msvc_pkg = (string_is(lang, "en-US") | string_is(lang, "")) ? msvc_pkg : false;
 				bool debug_pkg = string_is(id_lower, "microsoft.visualcpp.runtimedebug.14");
-				debug_pkg = string_is(chip, host_arch) ? debug_pkg : false;
+				debug_pkg = string_is(chip, target_arch) ? debug_pkg : false;
 				bool dia_pkg = string_is(id_lower, "microsoft.visualc.140.dia.sdk.msi");
 				if (msvc_pkg) {
 					hope(json_object_key_find(&p, "payloads"), "payloads not found");
@@ -1950,6 +1975,11 @@ int start(void)
 				}
 				folder_close(&f);
 			}
+			{
+				char telemetry_path[MAX_PATH * 3];
+				string_format(array_expand(telemetry_path), "{s}\\VC\\Tools\\MSVC\\{s}\\bin\\Host{s}\\{s}\\vctip.exe", install_path, msvcv, host_arch, target_arch);
+				file_delete(telemetry_path);
+			}
 			folder_delete(temp_path);
 		}
 		if (env_mode != 0) {
@@ -2092,19 +2122,19 @@ int start(void)
 
 	if (list_versions) {
 		println("MSVC Versions (Release): ");
-		for (i64 i = 0; i < release_msvc_versions_count; i++) {
+		for (i64 i = release_msvc_versions_count - 1; i >= 0; i--) {
 			println("{s}", release_msvc_versions[i]);
 		}
 		println("SDK Versions (Release): ");
-		for (i64 i = 0; i < release_sdk_versions_count; i++) {
+		for (i64 i = release_sdk_versions_count - 1; i >= 0; i--) {
 			println("{s}", release_sdk_versions[i]);
 		}
 		println("MSVC Versions (Preview): ");
-		for (i64 i = 0; i < preview_msvc_versions_count; i++) {
+		for (i64 i = preview_msvc_versions_count - 1; i >= 0; i--) {
 			println("{s}", preview_msvc_versions[i]);
 		}
 		println("SDK Versions (Preview): ");
-		for (i64 i = 0; i < preview_sdk_versions_count; i++) {
+		for (i64 i = preview_sdk_versions_count - 1; i >= 0; i--) {
 			println("{s}", preview_sdk_versions[i]);
 		}
 		cleanup();
@@ -2151,6 +2181,12 @@ int start(void)
 			}
 			hope(found, "Invalid SDK version: {s}", sdk_version);
 		}
+		println("Preview channel: {s}", is_preview ? "true" : "false");
+		println("MSVC version: {s}", msvc_version);
+		println("SDK version: {s}", sdk_version);
+		println("Target arch: {s}", target_arch);
+		println("Host arch: {s}", host_arch);
+		println("Install path: {s}", install_path);
 		if (folder_exists(install_path)) {
 			if (!is_folder_empty(install_path)) {
 				hopeless("Destination folder is not empty");
@@ -2158,18 +2194,12 @@ int start(void)
 		} else {
 			WCHAR wpath[MAX_PATH];
 			ut8_to_utf16(install_path, -1, wpath, MAX_PATH);
-			if (CreateDirectoryW(wpath, null)) {
+			if (!CreateDirectoryW(wpath, null)) {
 				if (GetLastError() != ERROR_ACCESS_DENIED) {
 					hopeless("Destination folder cannot be made");
 				}
 			}
 		}
-		println("Preview channel: {s}", is_preview ? "true" : "false");
-		println("MSVC version: {s}", msvc_version);
-		println("SDK version: {s}", sdk_version);
-		println("Target arch: {s}", target_arch);
-		println("Host arch: {s}", host_arch);
-		println("Install path: {s}", install_path);
 		println("Do you accept the license agreement? [Y/n] {s}", is_preview ? preview_license_url : release_license_url);
 		char answer[4];
 		sys_console_read(array_expand(answer));
