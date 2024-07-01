@@ -1217,7 +1217,7 @@ bool download_file(const char* file_url, const char* file_path, i64 size, const 
 	}
 	HINTERNET connection = InternetOpenUrlW(internet_session, wurl, null, 0, flags, 0);
 	if (!connection) {
-		println("open url failed with code {i32}", GetLastError());
+		println("open url failed");
 		return (false);
 	}
 	file_create(file_path);
@@ -1227,7 +1227,7 @@ bool download_file(const char* file_url, const char* file_path, i64 size, const 
 	char chunk[16 * mem_page_size];
 	while (true) {
 		if (!InternetReadFile(connection, chunk, count_of(chunk), &n)){
-			println("read file failed with code {i32}", GetLastError());
+			println("read file failed");
 			return (false);
 		}
 		if (n == 0) {
