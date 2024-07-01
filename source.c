@@ -1227,7 +1227,6 @@ bool download_file(const char* file_url, const char* file_path, const char* disp
 	file_create(file_path);
 	file_handle f = file_open(file_path, file_mode_write);
 	i64 current_size = 0;
-	i64 previous_p = 0;
 	DWORD n = 0;
 	char chunk[16 * mem_page_size];
 	while (true) {
@@ -1243,10 +1242,7 @@ bool download_file(const char* file_url, const char* file_path, const char* disp
 		if (content_size > 0) {
 			i64 p = (current_size * 100) / content_size;
 			p = clamp_top(p, 100);
-			if (p != previous_p) {
-				print("\r[{i64}%] {s}", p, display_name);
-			}
-			previous_p = p;
+			print("\r[{i64}%] {s}", p, display_name);
 		} else {
 			print("\r[{i64}kb] {s}", current_size / mem_kilobyte, display_name);
 		}
