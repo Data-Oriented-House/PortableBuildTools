@@ -10,14 +10,14 @@
 #include "gui/gui.h"
 #include <shobjidl_core.h>
 #include <shlwapi.h>
-#include <winhttp.h>
+#include <wininet.h>
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "shlwapi.lib")
-#pragma comment(lib, "winhttp.lib")
+#pragma comment(lib, "wininet.lib")
 #define ut8_to_utf16(str, str_count, wbuf, wbuf_count) \
 	MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, str, str_count, wbuf, wbuf_count)
 #define utf16_to_utf8(wstr, wstr_count, buf, buf_count) \
@@ -872,7 +872,7 @@ void env_set(HKEY location, LPCWSTR subkey, LPCWSTR key, const char* env)
 void cleanup(void)
 {
 	if (internet_session) {
-		WinHttpCloseHandle(internet_session);
+		InternetCloseHandle(internet_session);
 		internet_session = null;
 	}
 	CoUninitialize();
@@ -1067,7 +1067,6 @@ BOOL WINAPI window_proc(HWND dlg, UINT message, WPARAM wparam, LPARAM lparam)
 							LPWSTR wpath;
 							vcall(psi, lpVtbl->GetDisplayName, SIGDN_DESKTOPABSOLUTEPARSING, &wpath);
 							SetDlgItemTextW(dlg, ID_EDIT_PATH, wpath);
-							println("set new path");
 							CoTaskMemFree(wpath);
 						}
 						vcall(psi, lpVtbl->Release);
@@ -1208,90 +1207,34 @@ void parse_manifest(const char* path, bool preview)
 	preview_sdk_versions_count = preview ? sdk_versions_count : preview_sdk_versions_count;
 }
 
-bool download_file(const char* file_url, const char* file_path, i64 size, const char* display_name) {
-	char url [L_MAX_URL_LENGTH * 3];
-	string_copy(array_expand(url), file_url);
-	string_trim_start(url, "https://");
-	string_trim_start(url, "http://");
-	for (i64 i = 0; i < cast(i64, count_of(url)); i++) {
-		if (url[i] == '/') {
-			url[i] = 0;
-			break;
-		}
+bool download_file(const char* file_url, const char* file_path, i64 size, const char* display_name)
+{
+	WCHAR wurl[L_MAX_URL_LENGTH];
+	ut8_to_utf16(file_url, -1, wurl, count_of(wurl));
+	DWORD flags = INTERNET_FLAG_DONT_CACHE;
+	if(string_starts_with(file_url, "https://")) {
+		flags |= INTERNET_FLAG_SECURE;
 	}
-	char* url_base = url;
-	char* url_tail = url_base + string_count(url_base) + 1;
-	WCHAR wurl_base [L_MAX_URL_LENGTH];
-	WCHAR wurl_tail [L_MAX_URL_LENGTH];
-	ut8_to_utf16(url_base, -1, wurl_base, count_of(wurl_base));
-	ut8_to_utf16(url_tail, -1, wurl_tail, count_of(wurl_tail));
-	HINTERNET connection = WinHttpConnect(internet_session, wurl_base, INTERNET_DEFAULT_HTTPS_PORT, 0);
-	if (connection == null) {
-		println("connect failed");
-		return (false);
-	}
-	HINTERNET request = WinHttpOpenRequest(connection, L"GET", wurl_tail, null, null, null, WINHTTP_FLAG_SECURE);
-	if (request == null) {
-		println("open request failed");
-		WinHttpCloseHandle(connection);
-		return (false);
-	}
-//[c]	NOTE: This allows SSL validation failure in certain cases for certain people
-	do {
-		if (WinHttpSendRequest(request, WINHTTP_NO_ADDITIONAL_HEADERS, 0, null, 0, 0, 0)) {
-			break;
-		}
-		DWORD err = GetLastError();
-//[c]		Negotiate authorization handshakes may return this error and require multiple attempts
-//[c]		https://learn.microsoft.com/en-gb/windows/win32/winhttp/authentication-in-winhttp?redirectedfrom=MSDN
-		if (err == ERROR_WINHTTP_RESEND_REQUEST) {
-			continue;
-		}
-//[c]		If you want to allow SSL certificate errors and continue with the connection, you must allow and initial failure and then reset the security flags.
-//[c]		https://www.experts-exchange.com/questions/23009380/How-To-Handle-Invalid-Certificate-Authority-Error-with-WinInet.html
-		if (err == ERROR_WINHTTP_SECURE_FAILURE) {
-			DWORD flags = SECURITY_FLAG_IGNORE_UNKNOWN_CA |
-				SECURITY_FLAG_IGNORE_CERT_WRONG_USAGE |
-				SECURITY_FLAG_IGNORE_CERT_CN_INVALID |
-				SECURITY_FLAG_IGNORE_CERT_DATE_INVALID;
-			if (WinHttpSetOption(request, WINHTTP_OPTION_SECURITY_FLAGS, &flags, size_of(flags))) {
-				continue;
-			}
-		}
-		println("send request failed");
-		WinHttpCloseHandle(request);
-		WinHttpCloseHandle(connection);
-		return (false);
-	} while (true);
-	if (!WinHttpReceiveResponse(request, null)) {
-		println("receive response failed");
-		WinHttpCloseHandle(request);
-		WinHttpCloseHandle(connection);
+	HINTERNET connection = InternetOpenUrlW(internet_session, wurl, null, 0, flags, 0);
+	if (!connection) {
+		println("open url failed with code {i32}", GetLastError());
 		return (false);
 	}
 	file_create(file_path);
 	file_handle f = file_open(file_path, file_mode_write);
 	i64 current_size = 0;
+	DWORD n = 0;
 	char chunk[16 * mem_page_size];
 	while (true) {
-		DWORD chunk_size = 0;
-		if (!WinHttpQueryDataAvailable(request, &chunk_size)) {
-			WinHttpCloseHandle(request);
-			WinHttpCloseHandle(connection);
-			println("query data failed");
+		if (!InternetReadFile(connection, chunk, count_of(chunk), &n)){
+			println("read file failed with code {i32}", GetLastError());
 			return (false);
 		}
-		if (chunk_size <= 0) {
+		if (n == 0) {
 			break;
 		}
-		chunk_size = 0;
-		if (!WinHttpReadData(request, chunk, count_of(chunk), &chunk_size)) {
-			println("read data failed");
-			WinHttpCloseHandle(request);
-			WinHttpCloseHandle(connection);
-			return (false);
-		}
-		current_size += chunk_size;
+		file_write(&f, chunk, n);
+		current_size += n;
 		if (size > 0) {
 			i64 p = (current_size * 100) / size;
 			p = clamp_top(p, 100);
@@ -1299,15 +1242,13 @@ bool download_file(const char* file_url, const char* file_path, i64 size, const 
 		} else {
 			print("\r[{i64}kb] {s}", current_size / mem_kilobyte, display_name);
 		}
-		file_write(&f, chunk, chunk_size);
 	}
 	if (size > 0) {
 		print("\r[100%] {s}", display_name);
 	}
 	println("");
 	file_close(&f);
-	WinHttpCloseHandle(request);
-	WinHttpCloseHandle(connection);
+	InternetCloseHandle(connection);
 	return (true);
 }
 
@@ -1352,15 +1293,8 @@ int start(void)
 		panic = console_panic;
 	#endif
 	CoInitializeEx(null, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-	internet_session = WinHttpOpen(L"WinHTTP/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, null, null, 0);
+	internet_session = InternetOpenW(L"PortableBuildTools/2.0", INTERNET_OPEN_TYPE_PRECONFIG, null, null, 0);
 	hope(internet_session != null, "Failed to open internet session");
-
-	{
-		WCHAR wtemp_path[MAX_PATH];
-		GetTempPathW(count_of(wtemp_path), wtemp_path);
-		utf16_to_utf8(wtemp_path, -1, temp_path, count_of(temp_path));
-		string_format(array_expand(temp_path), "{s}BuildTools", temp_path);
-	}
 
 	bool is_subprocess = false;
 	bool list_versions = false;
@@ -1416,23 +1350,30 @@ int start(void)
 				string_trim_start(install_path, "\"");
 			} else {
 				print(
-				"usage: PortableBuildTools.exe [gui] [list] [accept_license] [preview] [msvc=MSVC version] [sdk=SDK version] [target=x64/x86/arm/arm64] [host=x64/x86] [env=none/user/global] [path=\"C:\\BuildTools\\\"]\n",
+				"usage: PortableBuildTools.exe [gui] [list] [accept_license] [preview] [msvc=MSVC version] [sdk=SDK version] [target=x64/x86/arm/arm64] [host=x64/x86] [env=none/user/global] [path=\"C:\\BuildTools\"]\n",
 					"\n",
 					"*gui: run PortableBuildTools in GUI mode\n",
 					"*list: show all available Build Tools versions\n",
-					"*accept_license: auto-accept the license if including in argument list [default: ask]\n",
+					"*accept_license: auto-accept the license [default: ask]\n",
 					"*preview: install from the Preview channel, instead of the Release channel [default: Release channel]\n",
-					"*msvc=MSVC version: which MSVC toolchain version to install [default: whatever is latest]\n",
-					"*sdk=SDK Version: which Windows SDK version to install [default: whatever is latest]\n",
-					"*target=x64/x86/arm/arm64: [default: x64]\n",
-					"*host=x64/x86: [default: x64]\n",
-					"*env=none/local/global: if supplied, then the installed path will be added to PATH environment variable, for the current user or for all users [default: none]\n"
-					"*path=path: installation path [default: C:\\BuildTools]\n"
+					"*msvc: which MSVC toolchain version to install [default: whatever is latest]\n",
+					"*sdk: which Windows SDK version to install [default: whatever is latest]\n",
+					"*target: target architecture [default: x64]\n",
+					"*host: host architecture [default: x64]\n",
+					"*env: if supplied, then the installed path will be added to PATH environment variable, for the current user or for all users [default: none]\n"
+					"*path: installation path [default: C:\\BuildTools]\n"
 				);
 				cleanup();
 				return (1);
 			}
 		}
+	}
+
+	{
+		WCHAR wtemp_path[MAX_PATH];
+		GetTempPathW(count_of(wtemp_path), wtemp_path);
+		utf16_to_utf8(wtemp_path, -1, temp_path, count_of(temp_path));
+		string_format(array_expand(temp_path), "{s}BuildTools", temp_path);
 	}
 
 //[c]	Installation
@@ -2070,17 +2011,9 @@ int start(void)
 		println("Downloading manifest files...");
 		char manifest_path[MAX_PATH * 3];
 		string_format(array_expand(manifest_path), "{s}\\Manifest.Release.json", temp_path);
-		if (!download_file(release_vsmanifest_url, manifest_path, 0, "Manifest.Release.json")) {
-			println("Failed to download release manifest");
-			cleanup();
-			return (0);
-		}
+		hope(download_file(release_vsmanifest_url, manifest_path, 0, "Manifest.Release.json"), "Failed to download release manifest");
 		string_format(array_expand(manifest_path), "{s}\\Manifest.Preview.json", temp_path);
-		if (!download_file(preview_vsmanifest_url, manifest_path, 0, "Manifest.Preview.json")) {
-			println("Failed to download preview manifest");
-			cleanup();
-			return (0);
-		}
+		hope(download_file(preview_vsmanifest_url, manifest_path, 0, "Manifest.Preview.json"), "Failed to download preview manifest");
 	}
 	{
 		println("Parsing manifest files...");
@@ -2094,17 +2027,9 @@ int start(void)
 		println("Downloading Build Tools manifest files...");
 		char manifest_path[MAX_PATH * 3];
 		string_format(array_expand(manifest_path), "{s}\\BuildToolsManifest.Release.json", temp_path);
-		if (!download_file(release_manifest_url, manifest_path, 0, "BuildToolsManifest.Release.json")) {
-			println("Failed to download Build Tools release manifest");
-			cleanup();
-			return (0);
-		}
+		hope(download_file(release_manifest_url, manifest_path, 0, "BuildToolsManifest.Release.json"), "Failed to download Build Tools release manifest");
 		string_format(array_expand(manifest_path), "{s}\\BuildToolsManifest.Preview.json", temp_path);
-		if (!download_file(preview_manifest_url, manifest_path, 0, "BuildToolsManifest.Preview.json")) {
-			println("Failed to download Build Tools preview manifest");
-			cleanup();
-			return (0);
-		}
+		hope(download_file(preview_manifest_url, manifest_path, 0, "BuildToolsManifest.Preview.json"), "Failed to download Build Tools preview manifest");
 	}
 	{
 		println("Parsing Build Tools manifest files...");

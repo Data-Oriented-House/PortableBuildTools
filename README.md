@@ -11,8 +11,6 @@ Download [latest release](https://github.com/Data-Oriented-House/PortableBuildTo
 
 ![Screenshot](gui.png)
 
-**[NOTE]** Windows 7 users should not install SDK starting with 26100, those do not work anymore.
-
 ## Command-Line Interface
 
 The program also has a command-line interface. Run it with `?` to see usage.
@@ -20,5 +18,3 @@ The program also has a command-line interface. Run it with `?` to see usage.
 ## Credits
 
 @mmozeiko - for the initial CLI Python [implementation](https://gist.github.com/mmozeiko/7f3162ec2988e81e56d5c4e22cde9977) of the tool
-
-@iamvfx - for helping me figure out WinHTTP
