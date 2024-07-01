@@ -1207,7 +1207,7 @@ void parse_manifest(const char* path, bool preview)
 	preview_sdk_versions_count = preview ? sdk_versions_count : preview_sdk_versions_count;
 }
 
-bool download_file(const char* file_url, const char* file_path, i64 size, const char* display_name)
+bool download_file(const char* file_url, const char* file_path, const char* display_name)
 {
 	WCHAR wurl[L_MAX_URL_LENGTH];
 	ut8_to_utf16(file_url, -1, wurl, count_of(wurl));
@@ -1220,9 +1220,14 @@ bool download_file(const char* file_url, const char* file_path, i64 size, const 
 		println("open url failed");
 		return (false);
 	}
+	DWORD content_size;
+	if (!HttpQueryInfoW(connection, HTTP_QUERY_CONTENT_LENGTH | HTTP_QUERY_FLAG_NUMBER, &content_size, &(DWORD){sizeof(content_size)}, null)) {
+		content_size = 0;
+	}
 	file_create(file_path);
 	file_handle f = file_open(file_path, file_mode_write);
 	i64 current_size = 0;
+	i64 previous_p = 0;
 	DWORD n = 0;
 	char chunk[16 * mem_page_size];
 	while (true) {
@@ -1235,15 +1240,18 @@ bool download_file(const char* file_url, const char* file_path, i64 size, const 
 		}
 		file_write(&f, chunk, n);
 		current_size += n;
-		if (size > 0) {
-			i64 p = (current_size * 100) / size;
+		if (content_size > 0) {
+			i64 p = (current_size * 100) / content_size;
 			p = clamp_top(p, 100);
-			print("\r[{i64}%] {s}", p, display_name);
+			if (p != previous_p) {
+				print("\r[{i64}%] {s}", p, display_name);
+			}
+			previous_p = p;
 		} else {
 			print("\r[{i64}kb] {s}", current_size / mem_kilobyte, display_name);
 		}
 	}
-	if (size > 0) {
+	if (content_size > 0) {
 		print("\r[100%] {s}", display_name);
 	}
 	println("");
@@ -1252,7 +1260,7 @@ bool download_file(const char* file_url, const char* file_path, i64 size, const 
 	return (true);
 }
 
-void extract_payload_info(json_context* jc, json_parser* p, char (*file_name)[MAX_PATH * 3], char (*url)[L_MAX_URL_LENGTH * 3], i64* size)
+void extract_payload_info(json_context* jc, json_parser* p, char (*file_name)[MAX_PATH * 3], char (*url)[L_MAX_URL_LENGTH * 3])
 {
 //[c]	TODO: extract and validate sha256
 	json_context payload_state = *jc;
@@ -1261,9 +1269,6 @@ void extract_payload_info(json_context* jc, json_parser* p, char (*file_name)[MA
 	json_file_context_restore(jc, payload_state);
 	hope(json_object_key_find(p, "url"), "url not found");
 	json_string_extract(p, array_expand(*url));
-	json_file_context_restore(jc, payload_state);
-	hope(json_object_key_find(p, "size"), "size not found");
-	*size = json_number_extract_i64(p);
 	json_file_context_restore(jc, payload_state);
 }
 
@@ -1474,12 +1479,11 @@ int start(void)
 					while (json_array_next(&p)) {
 						char file_name[MAX_PATH * 3];
 						char url[L_MAX_URL_LENGTH * 3];
-						i64 size;
-						extract_payload_info(&jc, &p, &file_name, &url, &size);
+						extract_payload_info(&jc, &p, &file_name, &url);
 						json_object_skip(&p);
 						char path[MAX_PATH * 3];
 						string_format(array_expand(path), "{s}\\{s}", msvc_path, file_name);
-						if (!download_file(url, path, size, file_name)) {
+						if (!download_file(url, path, file_name)) {
 							println("Failed to download package {s}", file_name);
 							cleanup();
 							return (0);
@@ -1491,12 +1495,11 @@ int start(void)
 					while (json_array_next(&p)) {
 						char file_name[MAX_PATH * 3];
 						char url[L_MAX_URL_LENGTH * 3];
-						i64 size;
-						extract_payload_info(&jc, &p, &file_name, &url, &size);
+						extract_payload_info(&jc, &p, &file_name, &url);
 						json_object_skip(&p);
 						char path[MAX_PATH * 3];
 						string_format(array_expand(path), "{s}\\{s}", debug_path, file_name);
-						if (!download_file(url, path, size, file_name)) {
+						if (!download_file(url, path, file_name)) {
 							println("Failed to download package {s}", file_name);
 							cleanup();
 							return (0);
@@ -1508,12 +1511,11 @@ int start(void)
 					while (json_array_next(&p)) {
 						char file_name[MAX_PATH * 3];
 						char url[L_MAX_URL_LENGTH * 3];
-						i64 size;
-						extract_payload_info(&jc, &p, &file_name, &url, &size);
+						extract_payload_info(&jc, &p, &file_name, &url);
 						json_object_skip(&p);
 						char path[MAX_PATH * 3];
 						string_format(array_expand(path), "{s}\\{s}", dia_path, file_name);
-						if (!download_file(url, path, size, file_name)) {
+						if (!download_file(url, path, file_name)) {
 							println("Failed to download package {s}", file_name);
 							cleanup();
 							return (0);
@@ -1531,8 +1533,7 @@ int start(void)
 					while (json_array_next(&p)) {
 						char file_name[MAX_PATH * 3];
 						char url[L_MAX_URL_LENGTH * 3];
-						i64 size;
-						extract_payload_info(&jc, &p, &file_name, &url, &size);
+						extract_payload_info(&jc, &p, &file_name, &url);
 						json_object_skip(&p);
 						if (string_trim_start(file_name, "Installers\\")) {
 							bool sdk_pkg = false;
@@ -1546,7 +1547,7 @@ int start(void)
 							if (sdk_pkg) {
 								char path[MAX_PATH * 3];
 								string_format(array_expand(path), "{s}\\{s}", sdk_path, file_name);
-								if (!download_file(url, path, size, file_name)) {
+								if (!download_file(url, path, file_name)) {
 									println("Failed to download the package: {s}", file_name);
 									cleanup();
 									return (0);
@@ -1590,8 +1591,7 @@ int start(void)
 					while (json_array_next(&p)) {
 						char file_name[MAX_PATH * 3];
 						char url[L_MAX_URL_LENGTH * 3];
-						i64 size;
-						extract_payload_info(&jc, &p, &file_name, &url, &size);
+						extract_payload_info(&jc, &p, &file_name, &url);
 						json_object_skip(&p);
 						if (string_trim_start(file_name, "Installers\\")) {
 							bool cab_pkg = false;
@@ -1601,7 +1601,7 @@ int start(void)
 							if (cab_pkg) {
 								char path[MAX_PATH * 3];
 								string_format(array_expand(path), "{s}\\{s}", sdk_path, file_name);
-								if (!download_file(url, path, size, file_name)) {
+								if (!download_file(url, path, file_name)) {
 									println("Failed to download the package: {s}", file_name);
 									cleanup();
 									return (0);
@@ -2011,9 +2011,9 @@ int start(void)
 		println("Downloading manifest files...");
 		char manifest_path[MAX_PATH * 3];
 		string_format(array_expand(manifest_path), "{s}\\Manifest.Release.json", temp_path);
-		hope(download_file(release_vsmanifest_url, manifest_path, 0, "Manifest.Release.json"), "Failed to download release manifest");
+		hope(download_file(release_vsmanifest_url, manifest_path, "Manifest.Release.json"), "Failed to download release manifest");
 		string_format(array_expand(manifest_path), "{s}\\Manifest.Preview.json", temp_path);
-		hope(download_file(preview_vsmanifest_url, manifest_path, 0, "Manifest.Preview.json"), "Failed to download preview manifest");
+		hope(download_file(preview_vsmanifest_url, manifest_path, "Manifest.Preview.json"), "Failed to download preview manifest");
 	}
 	{
 		println("Parsing manifest files...");
@@ -2027,9 +2027,9 @@ int start(void)
 		println("Downloading Build Tools manifest files...");
 		char manifest_path[MAX_PATH * 3];
 		string_format(array_expand(manifest_path), "{s}\\BuildToolsManifest.Release.json", temp_path);
-		hope(download_file(release_manifest_url, manifest_path, 0, "BuildToolsManifest.Release.json"), "Failed to download Build Tools release manifest");
+		hope(download_file(release_manifest_url, manifest_path, "BuildToolsManifest.Release.json"), "Failed to download Build Tools release manifest");
 		string_format(array_expand(manifest_path), "{s}\\BuildToolsManifest.Preview.json", temp_path);
-		hope(download_file(preview_manifest_url, manifest_path, 0, "BuildToolsManifest.Preview.json"), "Failed to download Build Tools preview manifest");
+		hope(download_file(preview_manifest_url, manifest_path, "BuildToolsManifest.Preview.json"), "Failed to download Build Tools preview manifest");
 	}
 	{
 		println("Parsing Build Tools manifest files...");
