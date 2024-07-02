@@ -1404,7 +1404,7 @@ int start(void)
 		folder_create(msvc_path);
 		folder_create(sdk_path);
 		{
-			char msvc_packages[64][128];
+			char msvc_packages[32][128];
 			i64 msvc_packages_count = 0;
 			string_format(array_expand(msvc_packages[msvc_packages_count]), "microsoft.visualcpp.dia.sdk");
 			msvc_packages_count++;
@@ -1418,27 +1418,25 @@ int start(void)
 			msvc_packages_count++;
 			string_format(array_expand(msvc_packages[msvc_packages_count]), "microsoft.vc.{s}.pgo.headers.base", msvc_version);
 			msvc_packages_count++;
-			for (i64 i = 0; i < count_of(targets); i++) {
-				string_format(array_expand(msvc_packages[msvc_packages_count]), "microsoft.vc.{s}.tools.host{s}.target{s}.base", msvc_version, host_arch, targets[i]);
-				msvc_packages_count++;
-				string_format(array_expand(msvc_packages[msvc_packages_count]), "microsoft.vc.{s}.tools.host{s}.target{s}.res.base", msvc_version, host_arch, targets[i]);
-				msvc_packages_count++;
-				string_format(array_expand(msvc_packages[msvc_packages_count]), "microsoft.vc.{s}.crt.{s}.desktop.base", msvc_version, targets[i]);
-				msvc_packages_count++;
-				string_format(array_expand(msvc_packages[msvc_packages_count]), "microsoft.vc.{s}.crt.{s}.store.base", msvc_version, targets[i]);
-				msvc_packages_count++;
-				string_format(array_expand(msvc_packages[msvc_packages_count]), "microsoft.vc.{s}.crt.redist.{s}.base", msvc_version, targets[i]);
-				msvc_packages_count++;
-				string_format(array_expand(msvc_packages[msvc_packages_count]), "microsoft.vc.{s}.premium.tools.host{s}.target{s}.base", msvc_version, host_arch, targets[i]);
-				msvc_packages_count++;
-				string_format(array_expand(msvc_packages[msvc_packages_count]), "microsoft.vc.{s}.pgo.{s}.base", msvc_version, targets[i]);
-				msvc_packages_count++;
-			}
+			string_format(array_expand(msvc_packages[msvc_packages_count]), "microsoft.vc.{s}.tools.host{s}.target{s}.base", msvc_version, host_arch, target_arch);
+			msvc_packages_count++;
+			string_format(array_expand(msvc_packages[msvc_packages_count]), "microsoft.vc.{s}.tools.host{s}.target{s}.res.base", msvc_version, host_arch, target_arch);
+			msvc_packages_count++;
+			string_format(array_expand(msvc_packages[msvc_packages_count]), "microsoft.vc.{s}.crt.{s}.desktop.base", msvc_version, target_arch);
+			msvc_packages_count++;
+			string_format(array_expand(msvc_packages[msvc_packages_count]), "microsoft.vc.{s}.crt.{s}.store.base", msvc_version, target_arch);
+			msvc_packages_count++;
+			string_format(array_expand(msvc_packages[msvc_packages_count]), "microsoft.vc.{s}.crt.redist.{s}.base", msvc_version, target_arch);
+			msvc_packages_count++;
+			string_format(array_expand(msvc_packages[msvc_packages_count]), "microsoft.vc.{s}.premium.tools.host{s}.target{s}.base", msvc_version, host_arch, target_arch);
+			msvc_packages_count++;
+			string_format(array_expand(msvc_packages[msvc_packages_count]), "microsoft.vc.{s}.pgo.{s}.base", msvc_version, target_arch);
+			msvc_packages_count++;
 			string_format(array_expand(msvc_packages[msvc_packages_count]), "microsoft.vc.{s}.asan.x86.base", msvc_version);
 			msvc_packages_count++;
 			string_format(array_expand(msvc_packages[msvc_packages_count]), "microsoft.vc.{s}.asan.x64.base", msvc_version);
 			msvc_packages_count++;
-			char sdk_packages[32][128];
+			char sdk_packages[16][128];
 			i64 sdk_packages_count = 0;
 			string_format(array_expand(sdk_packages[sdk_packages_count]), "Windows SDK for Windows Store Apps Tools-x86_en-us.msi");
 			sdk_packages_count++;
@@ -1454,10 +1452,8 @@ int start(void)
 			sdk_packages_count++;
 			string_format(array_expand(sdk_packages[sdk_packages_count]), "Universal CRT Headers Libraries and Sources-x86_en-us.msi");
 			sdk_packages_count++;
-			for (i64 i = 0; i < count_of(targets); i++) {
-				string_format(array_expand(sdk_packages[sdk_packages_count]), "Windows SDK Desktop Libs {s}-x86_en-us.msi", targets[i]);
-				sdk_packages_count++;
-			}
+			string_format(array_expand(sdk_packages[sdk_packages_count]), "Windows SDK Desktop Libs {s}-x86_en-us.msi", target_arch);
+			sdk_packages_count++;
 			char sdk_package[32] = {0};
 			json_context jc;
 			char manifest_path[MAX_PATH * 3];
@@ -1743,10 +1739,10 @@ int start(void)
 			}
 			folder_close(&dst_folder);
 		}
-		println("Creating build scripts...");
-		for (i64 i = 0; i < count_of(targets); i++) {
+		println("Creating a setup script...");
+		{
 			char bat_path[MAX_PATH * 3];
-			string_format(array_expand(bat_path), "{s}\\devcmd_{s}.bat", install_path, targets[i]);
+			string_format(array_expand(bat_path), "{s}\\devcmd.bat", install_path, target_arch);
 			file_create(bat_path);
 			file_handle f = file_open(bat_path, file_mode_write);
 			char buf[mem_page_size];
@@ -1757,7 +1753,7 @@ int start(void)
 			file_write(&f, buf, string_count(buf));
 			string_format(array_expand(buf), "set WindowsSDKVersion={s}\n", sdkv);
 			file_write(&f, buf, string_count(buf));
-			string_format(array_expand(buf), "set VSCMD_ARG_TGT_ARCH={s}\n", targets[i]);
+			string_format(array_expand(buf), "set VSCMD_ARG_TGT_ARCH={s}\n", target_arch);
 			file_write(&f, buf, string_count(buf));
 			string_format(array_expand(buf), "set VSCMD_ARG_HOST_ARCH={s}\n", host_arch);
 			file_write(&f, buf, string_count(buf));
@@ -1800,27 +1796,25 @@ int start(void)
 			char folder_to_remove[MAX_PATH * 3];
 			string_format(array_expand(folder_to_remove), "{s}\\VC\\Tools\\MSVC\\{s}\\Auxiliary", install_path, msvcv);
 			folder_delete(folder_to_remove);
-			for (i64 i = 0; i < count_of(targets); i++) {
-				string_format(array_expand(folder_to_remove), "{s}\\VC\\Tools\\MSVC\\{s}\\bin\\Host{s}\\{s}\\onecore", install_path, msvcv, target_arch, host_arch);
-				if (folder_exists(folder_to_remove)) {
-					folder_delete(folder_to_remove);
-				}
-				string_format(array_expand(folder_to_remove), "{s}\\VC\\Tools\\MSVC\\{s}\\lib\\{s}\\store", install_path, msvcv, targets[i]);
-				if (folder_exists(folder_to_remove)) {
-					folder_delete(folder_to_remove);
-				}
-				string_format(array_expand(folder_to_remove), "{s}\\VC\\Tools\\MSVC\\{s}\\lib\\{s}\\uwp", install_path, msvcv, targets[i]);
-				if (folder_exists(folder_to_remove)) {
-					folder_delete(folder_to_remove);
-				}
-				string_format(array_expand(folder_to_remove), "{s}\\VC\\Tools\\MSVC\\{s}\\lib\\{s}\\enclave", install_path, msvcv, targets[i]);
-				if (folder_exists(folder_to_remove)) {
-					folder_delete(folder_to_remove);
-				}
-				string_format(array_expand(folder_to_remove), "{s}\\VC\\Tools\\MSVC\\{s}\\lib\\{s}\\onecore", install_path, msvcv, targets[i]);
-				if (folder_exists(folder_to_remove)) {
-					folder_delete(folder_to_remove);
-				}
+			string_format(array_expand(folder_to_remove), "{s}\\VC\\Tools\\MSVC\\{s}\\bin\\Host{s}\\{s}\\onecore", install_path, msvcv, target_arch, host_arch);
+			if (folder_exists(folder_to_remove)) {
+				folder_delete(folder_to_remove);
+			}
+			string_format(array_expand(folder_to_remove), "{s}\\VC\\Tools\\MSVC\\{s}\\lib\\{s}\\store", install_path, msvcv, target_arch);
+			if (folder_exists(folder_to_remove)) {
+				folder_delete(folder_to_remove);
+			}
+			string_format(array_expand(folder_to_remove), "{s}\\VC\\Tools\\MSVC\\{s}\\lib\\{s}\\uwp", install_path, msvcv, target_arch);
+			if (folder_exists(folder_to_remove)) {
+				folder_delete(folder_to_remove);
+			}
+			string_format(array_expand(folder_to_remove), "{s}\\VC\\Tools\\MSVC\\{s}\\lib\\{s}\\enclave", install_path, msvcv, target_arch);
+			if (folder_exists(folder_to_remove)) {
+				folder_delete(folder_to_remove);
+			}
+			string_format(array_expand(folder_to_remove), "{s}\\VC\\Tools\\MSVC\\{s}\\lib\\{s}\\onecore", install_path, msvcv, target_arch);
+			if (folder_exists(folder_to_remove)) {
+				folder_delete(folder_to_remove);
 			}
 			string_format(array_expand(folder_to_remove), "{s}\\Windows Kits\\10\\Catalogs", install_path);
 			folder_delete(folder_to_remove);
@@ -1829,13 +1823,7 @@ int start(void)
 			string_format(array_expand(folder_to_remove), "{s}\\Windows Kits\\10\\bin\\{s}\\chpe", install_path, sdkv);
 			folder_delete(folder_to_remove);
 			string_format(array_expand(folder_to_remove), "{s}\\Windows Kits\\10\\Lib\\{s}\\ucrt_enclave", install_path, sdkv);
-			folder_delete(folder_to_remove);
-//[c]			TODO
-			/*
-			for arch in ["x86", "x64", "arm", "arm64"]:
-  				if arch not in targets:
-    					shutil.rmtree(OUTPUT / "Windows Kits/10/Lib" / sdkv / "ucrt" / arch, ignore_errors=True)
-    					shutil.rmtree(OUTPUT / "Windows Kits/10/Lib" / sdkv / "um" / arch, ignore_errors=True)
+			folder_delete(folder_to_remove);	
 			{
 				string_format(array_expand(folder_to_remove), "{s}\\Windows Kits\\10\\Lib\\{s}\\ucrt", install_path, sdkv);
 				folder_handle f = folder_open(folder_to_remove);
@@ -1864,8 +1852,6 @@ int start(void)
 				}
 				folder_close(&f);
 			}
-*/
-//[c]
 			{
 				string_format(array_expand(folder_to_remove), "{s}\\VC\\Tools\\MSVC\\{s}\\bin", install_path, msvcv);
 				folder_handle f = folder_open(folder_to_remove);
@@ -1894,11 +1880,9 @@ int start(void)
 				}
 				folder_close(&f);
 			}
-			for (i64 i = 0; i < count_of(targets); i++) {
-				char telemetry_path[MAX_PATH * 3];
-				string_format(array_expand(telemetry_path), "{s}\\VC\\Tools\\MSVC\\{s}\\bin\\Host{s}\\{s}\\vctip.exe", install_path, msvcv, host_arch, targets[i]);
-				file_delete(telemetry_path);
-			}
+			char telemetry_path[MAX_PATH * 3];
+			string_format(array_expand(telemetry_path), "{s}\\VC\\Tools\\MSVC\\{s}\\bin\\Host{s}\\{s}\\vctip.exe", install_path, msvcv, host_arch, target_arch);
+			file_delete(telemetry_path);
 			folder_delete(temp_path);
 		}
 		if (env_mode != 0) {
