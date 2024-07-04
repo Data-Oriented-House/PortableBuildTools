@@ -18,7 +18,7 @@
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "shlwapi.lib")
 #pragma comment(lib, "wininet.lib")
-#define ut8_to_utf16(str, str_count, wbuf, wbuf_count) \
+#define utf8_to_utf16(str, str_count, wbuf, wbuf_count) \
 	MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, str, str_count, wbuf, wbuf_count)
 #define utf16_to_utf8(wstr, wstr_count, buf, buf_count) \
 	WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wstr, wstr_count, buf, buf_count, null, null)
@@ -161,7 +161,7 @@ typedef enum {
 bool file_exists(const char* path)
 {
 	WCHAR wpath[MAX_PATH];
-	int n = ut8_to_utf16(path, -1, wpath, MAX_PATH);
+	int n = utf8_to_utf16(path, -1, wpath, MAX_PATH);
 	hope(n > 0, "path unicode conversion bug");
 	DWORD err = GetFileAttributesW(wpath);
 	bool ok = (err != INVALID_FILE_ATTRIBUTES) && !(err & FILE_ATTRIBUTE_DIRECTORY);
@@ -171,7 +171,7 @@ bool file_exists(const char* path)
 void file_delete(const char* path)
 {
 	WCHAR wpath[MAX_PATH];
-	int n = ut8_to_utf16(path, -1, wpath, MAX_PATH);
+	int n = utf8_to_utf16(path, -1, wpath, MAX_PATH);
 	hope(n > 0, "path unicode conversion bug");
 	hope(DeleteFileW(wpath), "failed to delete the file: {s}", path);
 }
@@ -179,7 +179,7 @@ void file_delete(const char* path)
 void file_create(const char* path)
 {
 	WCHAR wpath[MAX_PATH];
-	int n = ut8_to_utf16(path, -1, wpath, MAX_PATH);
+	int n = utf8_to_utf16(path, -1, wpath, MAX_PATH);
 	hope(n > 0, "path unicode conversion bug");
 	DWORD err = GetFileAttributesW(wpath);
 	bool exists = (err != INVALID_FILE_ATTRIBUTES) && !(err & FILE_ATTRIBUTE_DIRECTORY);
@@ -195,7 +195,7 @@ file_handle file_open(const char* path, file_mode mode)
 {
 	file_handle f = (file_handle){0};
 	WCHAR wpath[MAX_PATH];
-	int n = ut8_to_utf16(path, -1, wpath, MAX_PATH);
+	int n = utf8_to_utf16(path, -1, wpath, MAX_PATH);
 	hope(n > 0, "path unicode conversion bug");
 	DWORD access = 0;
 	access = (mode == file_mode_read) ? FILE_GENERIC_READ : access;
@@ -269,7 +269,7 @@ typedef struct {
 bool folder_exists(const char* path)
 {
 	WCHAR wpath[MAX_PATH];
-	ut8_to_utf16(path, -1, wpath, MAX_PATH);
+	utf8_to_utf16(path, -1, wpath, MAX_PATH);
 	DWORD err = GetFileAttributesW(wpath);
 	bool ok = (err != INVALID_FILE_ATTRIBUTES) && (err & FILE_ATTRIBUTE_DIRECTORY);
 	return (ok);
@@ -279,7 +279,7 @@ void folder_delete(const char* path)
 {
 //[c]	NOTE: Resulting string must be double-null-terminated
 	WCHAR wpath[MAX_PATH + 1];
-	int n = ut8_to_utf16(path, -1, wpath, MAX_PATH);
+	int n = utf8_to_utf16(path, -1, wpath, MAX_PATH);
 	wpath[n] = 0;
 	SHFILEOPSTRUCTW op = (SHFILEOPSTRUCTW){0};
 	op.wFunc = FO_DELETE;
@@ -291,7 +291,7 @@ void folder_delete(const char* path)
 void folder_create(const char* path)
 {
 	WCHAR wpath[MAX_PATH];
-	ut8_to_utf16(path, -1, wpath, MAX_PATH);
+	utf8_to_utf16(path, -1, wpath, MAX_PATH);
 	DWORD err = GetFileAttributesW(wpath);
 	bool exists = (err != INVALID_FILE_ATTRIBUTES) && (err & FILE_ATTRIBUTE_DIRECTORY);
 	if (exists) {
@@ -306,7 +306,7 @@ folder_handle folder_open(const char* path)
 	WCHAR wpath[MAX_PATH];
 	char path_fixed[MAX_PATH * 3];
 	string_format(array_expand(path_fixed), "{s}\\*", path);
-	ut8_to_utf16(path_fixed, -1, wpath, MAX_PATH);
+	utf8_to_utf16(path_fixed, -1, wpath, MAX_PATH);
 	folder_handle f = (folder_handle){0};
 //[c]	Skip .
 	f.handle = FindFirstFileW(wpath, &f.data);
@@ -881,7 +881,7 @@ void console_reset_line(void)
 void env_set(HKEY location, LPCWSTR subkey, LPCWSTR key, const char* env)
 {
 	WCHAR wenv[MAX_ENV_LEN];
-	int n = ut8_to_utf16(env, -1, wenv, count_of(wenv));
+	int n = utf8_to_utf16(env, -1, wenv, count_of(wenv));
 	RegSetKeyValueW(location, subkey, key, REG_SZ, wenv, n * size_of(WCHAR));
 }
 
@@ -905,7 +905,7 @@ void message_box_panic(const char* msg)
 {
 	cleanup();
 	WCHAR wmsg[mem_page_size / size_of(WCHAR)];
-	ut8_to_utf16(msg, -1, wmsg, count_of(wmsg));
+	utf8_to_utf16(msg, -1, wmsg, count_of(wmsg));
 	MessageBoxW(GetConsoleWindow(), wmsg, null, MB_TOPMOST | MB_ICONERROR);
 	exit(1);
 }
@@ -920,7 +920,7 @@ void refill_gui(HWND dlg)
 		SendMessageW(item, CB_RESETCONTENT, 0, 0);
 		for (i64 i = msvc_versions_count - 1; i >= 0; i--) {
 			WCHAR wver[MAX_ENV_LEN];
-			ut8_to_utf16(msvc_versions[i], -1, wver, count_of(wver));
+			utf8_to_utf16(msvc_versions[i], -1, wver, count_of(wver));
 			SendMessageW(item, CB_ADDSTRING, 0, cast(LPARAM, wver));
 		}
 		SendMessageW(item, CB_SETCURSEL, 0, 0);
@@ -933,7 +933,7 @@ void refill_gui(HWND dlg)
 		SendMessageW(item, CB_RESETCONTENT, 0, 0);
 		for (i64 i = sdk_versions_count - 1; i >= 0; i--) {
 			WCHAR wver[MAX_ENV_LEN];
-			ut8_to_utf16(sdk_versions[i], -1, wver, count_of(wver));
+			utf8_to_utf16(sdk_versions[i], -1, wver, count_of(wver));
 			SendMessageW(item, CB_ADDSTRING, 0, cast(LPARAM, wver));
 		}
 		SendMessageW(item, CB_SETCURSEL, 0, 0);
@@ -944,7 +944,7 @@ void refill_gui(HWND dlg)
 		char link_url[64 + L_MAX_URL_LENGTH * 3] = {0};
 		string_format(array_expand(link_url), "I accept the <a href=\"{s}\">License Agreement</a>", license_url);
 		WCHAR wlink[64 + L_MAX_URL_LENGTH];
-		ut8_to_utf16(link_url, -1, wlink, count_of(wlink));
+		utf8_to_utf16(link_url, -1, wlink, count_of(wlink));
 		SetDlgItemTextW(dlg, ID_SYSLINK_LICENSE, wlink);
 	}
 }
@@ -1102,7 +1102,7 @@ BOOL WINAPI window_proc(HWND dlg, UINT message, WPARAM wparam, LPARAM lparam)
 						}
 					} else {
 						WCHAR wpath[MAX_PATH];
-						ut8_to_utf16(install_path, -1, wpath, MAX_PATH);
+						utf8_to_utf16(install_path, -1, wpath, MAX_PATH);
 						if (!CreateDirectoryW(wpath, null)) {
 							if (GetLastError() != ERROR_ACCESS_DENIED) {
 								MessageBoxW(dlg, L"Destination folder cannot be made", null, MB_TOPMOST | MB_ICONERROR);
@@ -1227,7 +1227,7 @@ void parse_manifest(const char* path, bool preview)
 bool download_file(const char* file_url, const char* file_path, const char* display_name)
 {
 	WCHAR wurl[L_MAX_URL_LENGTH];
-	ut8_to_utf16(file_url, -1, wurl, count_of(wurl));
+	utf8_to_utf16(file_url, -1, wurl, count_of(wurl));
 	DWORD flags = INTERNET_FLAG_DONT_CACHE;
 	if(string_starts_with(file_url, "https://")) {
 		flags |= INTERNET_FLAG_SECURE;
@@ -1290,7 +1290,7 @@ void run_msiexec(const char* installer, const char* dest)
 	char params[MAX_CMDLINE_LEN * 3];
 	string_format(array_expand(params), "/a \"{s}\" /quiet TARGETDIR=\"{s}\"", installer, dest);
 	WCHAR wparams[MAX_CMDLINE_LEN];
-	ut8_to_utf16(params, -1, wparams, count_of(wparams));
+	utf8_to_utf16(params, -1, wparams, count_of(wparams));
 	SHELLEXECUTEINFOW info = (SHELLEXECUTEINFOW){0};
 	info.cbSize = size_of(SHELLEXECUTEINFOW);
 	info.fMask = SEE_MASK_NOCLOSEPROCESS;
@@ -1959,7 +1959,7 @@ int start(void)
 			string_trim_start(path, ";");
 			{
 				WCHAR wpath[MAX_ENV_LEN];
-				int n = ut8_to_utf16(path, -1, wpath, count_of(wpath));
+				int n = utf8_to_utf16(path, -1, wpath, count_of(wpath));
 				RegSetKeyValueW(location, subkey, L"Path", REG_EXPAND_SZ, wpath, n * size_of(WCHAR));
 			}
 		}
@@ -2081,18 +2081,22 @@ int start(void)
 			}
 		} else {
 			WCHAR wpath[MAX_PATH];
-			ut8_to_utf16(install_path, -1, wpath, MAX_PATH);
+			utf8_to_utf16(install_path, -1, wpath, MAX_PATH);
 			if (!CreateDirectoryW(wpath, null)) {
 				if (GetLastError() != ERROR_ACCESS_DENIED) {
 					hopeless("Destination folder cannot be made");
 				}
 			}
 		}
-		println("Do you accept the license agreement? [Y/n] {s}", is_preview ? preview_license_url : release_license_url);
-		char answer[4];
-		sys_console_read(array_expand(answer));
-		string_lower(answer);
-		install_start = string_is(answer, "") | string_is(answer, "y") | string_is(answer, "yes");
+		if (license_accepted) {
+			install_start = true;
+		} else {
+			println("Do you accept the license agreement? [Y/n] {s}", is_preview ? preview_license_url : release_license_url);
+			char answer[4];
+			sys_console_read(array_expand(answer));
+			string_lower(answer);
+			install_start = string_is(answer, "") | string_is(answer, "y") | string_is(answer, "yes");
+		}
 		if (!install_start) {
 			println("License was not accepted, cannot proceed further.");
 		}
@@ -2116,9 +2120,9 @@ int start(void)
 		char params[MAX_CMDLINE_LEN * 3];
 		string_format(array_expand(params), "! {s} msvc={s} sdk={s} target={s} host={s} env={s} path=\"{s}\"", is_preview ? "preview" : "", msvc_version, sdk_version, target_arch, host_arch, env_mode_str, install_path);
 		WCHAR wprogram[MAX_PATH];
-		ut8_to_utf16(args, -1, wprogram, count_of(wprogram));
+		utf8_to_utf16(args, -1, wprogram, count_of(wprogram));
 		WCHAR wparams[MAX_CMDLINE_LEN];
-		ut8_to_utf16(params, -1, wparams, count_of(wparams));
+		utf8_to_utf16(params, -1, wparams, count_of(wparams));
 		SHELLEXECUTEINFOW info = (SHELLEXECUTEINFOW){0};
 		info.cbSize = size_of(SHELLEXECUTEINFOW);
 		info.fMask = SEE_MASK_NOCLOSEPROCESS;

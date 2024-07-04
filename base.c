@@ -277,7 +277,7 @@ bool string_is(const char* s, const char* x)
 }
 //[cf]
 //[c]TODO: string_from_float
-//[of]:[internal] char*	string_from_integer(char buf[66], n64 x, n64 base, bool is_signed, n64 leading_zeroes)
+//[of]:[internal] char*	string_from_integer(char (*buf)[66], n64 x, n64 base, bool is_signed, n64 leading_zeroes)
 char* string_from_integer(char (*buf)[66], n64 x, n64 base, bool is_signed, n64 leading_zeroes)
 {
 	static const char* digits = "0123456789abcdefghijklmnopqrstuvwxyz";

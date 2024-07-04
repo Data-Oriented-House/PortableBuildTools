@@ -9,7 +9,7 @@ def tools
 		caption = Build PBT
 		directory = W:\dev\PortableBuildTools
 		command = cmd.exe
-		arguments = /c build.bat
+		arguments = /c D:\BuildTools\devcmd.bat && build.bat
 		save-all = true
 		auto-close = true
 		hot-key = F5
