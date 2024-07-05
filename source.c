@@ -867,17 +867,6 @@ i64 preview_sdk_versions_count;
 
 HINTERNET internet_session;
 
-void console_reset_line(void)
-{
-	HANDLE con = GetStdHandle(STD_OUTPUT_HANDLE);
-	CONSOLE_SCREEN_BUFFER_INFO csbi;
-	GetConsoleScreenBufferInfo(con, &csbi);
-	DWORD cell_count = csbi.dwCursorPosition.X;
-	DWORD count;
-	FillConsoleOutputCharacterW(con, ' ', cell_count, (COORD){0, csbi.dwCursorPosition.Y}, &count);
-	SetConsoleCursorPosition(con, (COORD){0, csbi.dwCursorPosition.Y});
-}
-
 void env_set(HKEY location, LPCWSTR subkey, LPCWSTR key, const char* env)
 {
 	WCHAR wenv[MAX_ENV_LEN];
@@ -1286,24 +1275,6 @@ void extract_payload_info(json_context* jc, json_parser* p, char (*file_name)[MA
 	json_file_context_restore(jc, payload_state);
 }
 
-void run_msiexec(const char* installer, const char* dest)
-{
-	char params[MAX_CMDLINE_LEN * 3];
-	string_format(array_expand(params), "/a \"{s}\" /quiet TARGETDIR=\"{s}\"", installer, dest);
-	WCHAR wparams[MAX_CMDLINE_LEN];
-	utf8_to_utf16(params, -1, wparams, count_of(wparams));
-	SHELLEXECUTEINFOW info = (SHELLEXECUTEINFOW){0};
-	info.cbSize = size_of(SHELLEXECUTEINFOW);
-	info.fMask = SEE_MASK_NOCLOSEPROCESS;
-	info.lpVerb = L"open";
-	info.lpFile = L"msiexec.exe";
-	info.lpParameters = wparams;
-	info.nShow = SW_NORMAL;
-	bool ok = ShellExecuteExW(&info);
-	hope(ok, "Failed to run msiexec");
-	WaitForSingleObject(info.hProcess, INFINITE);
-}
-
 void install(void)
 {
 //[c]	Create temporary folders
@@ -1561,7 +1532,20 @@ void install(void)
 			}
 			char file_path[MAX_PATH * 3];
 			string_format(array_expand(file_path), "{s}\\{s}", sdk_path, file_name);
-			run_msiexec(file_path, install_path);
+			char params[MAX_CMDLINE_LEN * 3];
+			string_format(array_expand(params), "/a \"{s}\" /quiet TARGETDIR=\"{s}\"", file_path, install_path);
+			WCHAR wparams[MAX_CMDLINE_LEN];
+			utf8_to_utf16(params, -1, wparams, count_of(wparams));
+			SHELLEXECUTEINFOW info = (SHELLEXECUTEINFOW){0};
+			info.cbSize = size_of(SHELLEXECUTEINFOW);
+			info.fMask = SEE_MASK_NOCLOSEPROCESS;
+			info.lpVerb = L"open";
+			info.lpFile = L"msiexec.exe";
+			info.lpParameters = wparams;
+			info.nShow = SW_NORMAL;
+			bool ok = ShellExecuteExW(&info);
+			hope(ok, "Failed to run msiexec");
+			WaitForSingleObject(info.hProcess, INFINITE);
 		}
 		folder_close(&sdk_folder);
 	}
@@ -1637,7 +1621,7 @@ void install(void)
 		}
 		folder_close(&dst_folder);
 	}
-	println("Creating a setup script...");
+	println("Creating a batch setup script...");
 	{
 		char bat_path[MAX_PATH * 3];
 		string_format(array_expand(bat_path), "{s}\\devcmd.bat", install_path, target_arch);
@@ -1668,6 +1652,47 @@ void install(void)
 		file_write(&f, string_to_array("%WindowsSDKDir%\\bin\\%WindowsSDKVersion%\\%VSCMD_ARG_TGT_ARCH%;"));
 		file_write(&f, string_to_array("%WindowsSDKDir%\\bin\\%WindowsSDKVersion%\\%VSCMD_ARG_TGT_ARCH%\\ucrt\n"));
 		file_write(&f, string_to_array("set PATH=%BUILD_TOOLS_BIN%;%PATH%\n"));
+		file_close(&f);
+	}
+	println("Creating a PowerShell setup script...");
+	{
+		char bat_path[MAX_PATH * 3];
+		string_format(array_expand(bat_path), "{s}\\devcmd.ps1", install_path, target_arch);
+		file_create(bat_path);
+		file_handle f = file_open(bat_path, file_mode_write);
+		char buf[mem_page_size];
+		file_write(&f, string_to_array("param([string]$InstallPath = $PSScriptRoot)\n"));
+		file_write(&f, string_to_array("$env:BUILD_TOOLS_ROOT = $InstallPath\n"));
+		file_write(&f, string_to_array("$env:WindowsSDKDir = (Join-Path $InstallPath '\\Windows Kits\\10')\n"));
+		file_write(&f, string_to_array("$VCToolsVersion = (Get-ChildItem -Directory (Join-Path $InstallPath '\\VC\\Tools\\MSVC' | Sort-Object -Descending LastWriteTime | Select-Object -First 1) -ErrorAction SilentlyContinue).Name\n"));
+		file_write(&f, string_to_array("if (!$VCToolsVersion) { throw 'VCToolsVersion cannot be determined.' }\n"));
+		file_write(&f, string_to_array("$env:VCToolsInstallDir = Join-Path $InstallPath '\\VC\\Tools\\MSVC' $VCToolsVersion\n"));
+		file_write(&f, string_to_array("$env:WindowsSDKVersion = (Get-ChildItem -Directory (Join-Path $env:WindowsSDKDir 'bin') -ErrorAction SilentlyContinue | Sort-Object -Descending LastWriteTime | Select-Object -First 1).Name\n"));
+		file_write(&f, string_to_array("if (!$env:WindowsSDKVersion ) { throw 'WindowsSDKVersion cannot be determined.' }\n"));
+		string_format(array_expand(buf), "$env:VSCMD_ARG_TGT_ARCH = '{s}'}\n", target_arch);
+		file_write(&f, buf, string_count(buf));
+		string_format(array_expand(buf), "$env:VSCMD_ARG_HOST_ARCH = '{s}'\n", host_arch);
+		file_write(&f, buf, string_count(buf));
+		file_write(&f, string_to_array("'Portable Build Tools environment started.'"));
+		file_write(&f, string_to_array("'* BUILD_TOOLS_ROOT   : {0}' -f $env:BUILD_TOOLS_ROOT"));
+		file_write(&f, string_to_array("'* WindowsSDKDir      : {0}' -f $env:WindowsSDKDir"));
+		file_write(&f, string_to_array("'* WindowsSDKVersion  : {0}' -f $env:WindowsSDKVersion"));
+		file_write(&f, string_to_array("'* VCToolsInstallDir  : {0}' -f $env:VCToolsInstallDir"));
+		file_write(&f, string_to_array("'* VSCMD_ARG_TGT_ARCH : {0}' -f $env:VSCMD_ARG_TGT_ARCH"));
+		file_write(&f, string_to_array("'* VSCMD_ARG_HOST_ARCH: {0}' -f $env:VSCMD_ARG_HOST_ARCH"));
+		file_write(&f, string_to_array("$env:INCLUDE =\"$env:VCToolsInstallDir\\include;"));
+		file_write(&f, string_to_array("$env:WindowsSDKDir\\Include\\$env:WindowsSDKVersion\\ucrt;"));
+		file_write(&f, string_to_array("$env:WindowsSDKDir\\Include\\$env:WindowsSDKVersion\\shared;"));
+		file_write(&f, string_to_array("$env:WindowsSDKDir\\Include\\$env:WindowsSDKVersion\\um;"));
+		file_write(&f, string_to_array("$env:WindowsSDKDir\\Include\\$env:WindowsSDKVersion\\winrt;"));
+		file_write(&f, string_to_array("$env:WindowsSDKDir\\Include\\$env:WindowsSDKVersion\\cppwinrt\"\n"));
+		file_write(&f, string_to_array("$env:LIB = \"$env:VCToolsInstallDir\\lib\\$env:VSCMD_ARG_TGT_ARCH;"));
+		file_write(&f, string_to_array("$env:WindowsSDKDir\\Lib\\$env:WindowsSDKVersion\\ucrt\\$env:VSCMD_ARG_TGT_ARCH;"));
+		file_write(&f, string_to_array("$env:WindowsSDKDir\\Lib\\$env:WindowsSDKVersion\\um\\$env:VSCMD_ARG_TGT_ARCH\"\n"));
+		file_write(&f, string_to_array("$env:BUILD_TOOLS_BIN = \"$env:VCToolsInstallDir\\bin\\Hostx64\\$env:VSCMD_ARG_TGT_ARCH;"));
+		file_write(&f, string_to_array("$env:WindowsSDKDir\\bin\\$env:WindowsSDKVersion\\$env:VSCMD_ARG_TGT_ARCH;"));
+		file_write(&f, string_to_array("$env:WindowsSDKDir\\bin\\$env:WindowsSDKVersion\\$env:VSCMD_ARG_TGT_ARCH\\ucrt\"\n"));
+		file_write(&f, string_to_array("$env:PATH = \"$env:BUILD_TOOLS_BIN;$env:PATH\"\n"));
 		file_close(&f);
 	}
 	println("Cleanup...");
