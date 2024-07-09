@@ -1663,6 +1663,7 @@ void install(void)
 		file_create(bat_path);
 		file_handle f = file_open(bat_path, file_mode_write);
 		char buf[mem_page_size];
+		file_write(&f, string_to_array("#Requires -Version 5\n"));
 		file_write(&f, string_to_array("param([string]$InstallPath = $PSScriptRoot)\n"));
 		file_write(&f, string_to_array("$env:BUILD_TOOLS_ROOT = $InstallPath\n"));
 		file_write(&f, string_to_array("$env:WindowsSDKDir = (Join-Path $InstallPath '\\Windows Kits\\10')\n"));
