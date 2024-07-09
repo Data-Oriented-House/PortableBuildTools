@@ -957,6 +957,7 @@ void path_update(HWND dlg)
 		HANDLE tfile = CreateFileW(check_path, GENERIC_WRITE, 0, null, CREATE_NEW, FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, null);
 		if (tfile != INVALID_HANDLE_VALUE) {
 			CloseHandle(tfile);
+			is_admin = false;
 			SendMessageW(GetDlgItem(dlg, ID_BUTTON_INSTALL), BCM_SETSHIELD, 0, false);
 			return;
 		}
@@ -964,6 +965,7 @@ void path_update(HWND dlg)
 		BOOL ok = CreateDirectoryW(wpath, null);
 		if (ok) {
 			folder_delete(install_path);
+			is_admin = false;
 			SendMessageW(GetDlgItem(dlg, ID_BUTTON_INSTALL), BCM_SETSHIELD, 0, false);
 			return;
 		}
@@ -1689,7 +1691,7 @@ void install(void)
 		file_write(&f, string_to_array("$env:LIB = \"$env:VCToolsInstallDir\\lib\\$env:VSCMD_ARG_TGT_ARCH;"));
 		file_write(&f, string_to_array("$env:WindowsSDKDir\\Lib\\$env:WindowsSDKVersion\\ucrt\\$env:VSCMD_ARG_TGT_ARCH;"));
 		file_write(&f, string_to_array("$env:WindowsSDKDir\\Lib\\$env:WindowsSDKVersion\\um\\$env:VSCMD_ARG_TGT_ARCH\"\n"));
-		file_write(&f, string_to_array("$env:BUILD_TOOLS_BIN = \"$env:VCToolsInstallDir\\bin\\Hostx64\\$env:VSCMD_ARG_TGT_ARCH;"));
+		file_write(&f, string_to_array("$env:BUILD_TOOLS_BIN = \"$env:VCToolsInstallDir\\bin\\Host$env:VSCMD_ARG_HOST_ARCH\\$env:VSCMD_ARG_TGT_ARCH;"));
 		file_write(&f, string_to_array("$env:WindowsSDKDir\\bin\\$env:WindowsSDKVersion\\$env:VSCMD_ARG_TGT_ARCH;"));
 		file_write(&f, string_to_array("$env:WindowsSDKDir\\bin\\$env:WindowsSDKVersion\\$env:VSCMD_ARG_TGT_ARCH\\ucrt\"\n"));
 		file_write(&f, string_to_array("$env:PATH = \"$env:BUILD_TOOLS_BIN;$env:PATH\"\n"));
