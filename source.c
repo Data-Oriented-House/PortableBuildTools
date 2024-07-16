@@ -170,6 +170,9 @@ bool file_exists(const char* path)
 
 void file_delete(const char* path)
 {
+	if (!file_exists(path)) {
+		return;
+	}
 	WCHAR wpath[MAX_PATH];
 	int n = utf8_to_utf16(path, -1, wpath, MAX_PATH);
 	hope(n > 0, "path unicode conversion bug");
