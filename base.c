@@ -619,10 +619,10 @@ i64 args_count;
 void parse_command_line_args(void)
 {
 	LPWSTR wargs = GetCommandLineW();
-	i64 args_count = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, cast(LPCWCH, wargs), -1, args, count_of(args), null, null);
+	i64 argc = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, cast(LPCWCH, wargs), -1, args, count_of(args), null, null);
 	bool escaping = false;
 	bool in_string = false;
-	for (i64 i = 0; i < args_count; i++) {
+	for (i64 i = 0; i < argc; i++) {
 		if (escaping) {
 			escaping = false;
 			continue;
