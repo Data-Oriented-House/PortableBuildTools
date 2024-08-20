@@ -1912,7 +1912,6 @@ int start(void)
 		i64 arg_pos = 0;
 		for (i64 i = 0; i < args_count; i++) {
 			char* arg = &args[arg_pos];
-			println("arg: {s}", arg);
 			i64 arg_count = string_count(arg);
 			arg_pos += arg_count + 1;
 			if (i == 0) {
