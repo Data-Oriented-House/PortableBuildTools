@@ -1243,7 +1243,8 @@ bool download_file(const char* file_url, const char* file_path, const char* disp
 	char chunk[16 * mem_page_size];
 	while (true) {
 		if (!InternetReadFile(connection, chunk, count_of(chunk), &n)){
-			println("read file failed");
+			file_close(&f);
+			println("\ndownload failed...");
 			return (false);
 		}
 		if (n == 0) {
@@ -1271,7 +1272,7 @@ bool download_file(const char* file_url, const char* file_path, const char* disp
 void download_file_always(const char* file_url, const char* file_path, const char* display_name)
 {
 	while (!download_file(file_url, file_path, display_name)) {
-		println("download failed, retrying...");
+		println("retrying...");
 	}
 }
 
@@ -1911,6 +1912,7 @@ int start(void)
 		i64 arg_pos = 0;
 		for (i64 i = 0; i < args_count; i++) {
 			char* arg = &args[arg_pos];
+			println("arg: {s}", arg);
 			i64 arg_count = string_count(arg);
 			arg_pos += arg_count + 1;
 			if (i == 0) {
