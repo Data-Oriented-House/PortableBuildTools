@@ -1268,6 +1268,13 @@ bool download_file(const char* file_url, const char* file_path, const char* disp
 	return (true);
 }
 
+void download_file_always(const char* file_url, const char* file_path, const char* display_name)
+{
+	while (!download_file(file_url, file_path, display_name)) {
+		println("download failed, retrying...");
+	}
+}
+
 void extract_payload_info(json_context* jc, json_parser* p, char (*file_name)[MAX_PATH * 3], char (*url)[L_MAX_URL_LENGTH * 3])
 {
 //[c]	TODO: extract and validate sha256
@@ -1397,7 +1404,7 @@ void install(void)
 					json_object_skip(&p);
 					char path[MAX_PATH * 3];
 					string_format(array_expand(path), "{s}\\{s}", msvc_path, file_name);
-					hope(download_file(url, path, file_name), "Failed to download package {s}", file_name);
+					download_file_always(url, path, file_name);
 				}
 			}
 			if (string_is(id, sdk_package)) {
@@ -1419,7 +1426,7 @@ void install(void)
 						if (sdk_pkg) {
 							char path[MAX_PATH * 3];
 							string_format(array_expand(path), "{s}\\{s}", sdk_path, file_name);
-							hope(download_file(url, path, file_name), "Failed to download the package: {s}", file_name);
+							download_file_always(url, path, file_name);
 //[c]							Extract .cab file info
 							file_handle msi = file_open(path, file_mode_read);
 							char chunk[mem_page_size];
@@ -1469,7 +1476,7 @@ void install(void)
 						if (cab_pkg) {
 							char path[MAX_PATH * 3];
 							string_format(array_expand(path), "{s}\\{s}", sdk_path, file_name);
-							hope(download_file(url, path, file_name), "Failed to download the package: {s}", file_name);
+							download_file_always(url, path, file_name);
 						}
 					}
 				}

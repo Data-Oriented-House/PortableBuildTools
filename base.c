@@ -167,18 +167,26 @@ i64 char8_size_naive(char8 c8)
 //[of]:i64	char8_size(char8 c8)
 i64 char8_size(char8 c8)
 {
+	static const n32 mins[] = {4194304, 0, 128, 2048, 65536};
+	static const i32 shifte[] = {0, 6, 4, 2, 0};
+	static const i32 masks[]  = {0x00, 0x7f, 0x1f, 0x0f, 0x07};
+	static const i32 shiftc[] = {0, 18, 12, 6, 0};
+	char* bytes = cast(char*, &c8);
 	i64 size = char8_size_naive(c8);
-	bool valid = false;
-	valid = (c8 <= 0x7f) ? true : valid;
-	bool is_2byte = ((c8 & 0xc0e0) == 0x80c0);
-	bool is_3byte = ((c8 & 0xc0c0f0) == 0x8080e0);
-	bool is_4byte = ((c8 & 0xc0c0c0f8) == 0x808080f0);
-	valid = ((0x80c2 <= c8) & (c8 <= 0xbfdf)) ? is_2byte : valid;
-//[c]	surrogate half
-	valid = ((0xeda080 <= c8) & (c8 <= 0xedbfbf)) ? false : valid;
-	valid = ((0x80a0e0 <= c8) & (c8 <= 0xbfbfef)) ? is_3byte : valid;
-	valid = ((0x808090f0 <= c8) & (c8 <= 0xbfbf8ff4)) ? is_4byte : valid;
-	size = valid ? size : 0;
+	n32 c32 = (bytes[0] & masks[size]) << 18;
+	c32 |= (bytes[1] & 0x3f) << 12;
+	c32 |= (bytes[2] & 0x3f) << 6;
+	c32 |= (bytes[3] & 0x3f) << 0;
+	c32 >>= shiftc[size];
+	i32 err = (c32 < mins[size]) << 6; // non-canonical encoding
+	err |= ((c32 >> 11) == 0x1b) << 7;  // surrogate half
+	err |= (c32 > 0x10FFFF) << 8;  // out of range
+	err |= (bytes[1] & 0xc0) >> 2;
+	err |= (bytes[2] & 0xc0) >> 4;
+	err |= (bytes[3]) >> 6;
+	err ^= 0x2a; // incorrect top two bits of each tail byte
+	err >>= shifte[size];
+	size = err ? 0 : size;
 	return (size);
 }
 //[cf]
