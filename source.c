@@ -1902,7 +1902,7 @@ int start(void)
 	bool list_versions = false;
 	{
 		i64 arg_pos = 0;
-		for (i64 i = 0; i < argc; i++) {
+		for (i64 i = 0; i < args_count; i++) {
 			char* arg = &args[arg_pos];
 			i64 arg_count = string_count(arg);
 			arg_pos += arg_count + 1;

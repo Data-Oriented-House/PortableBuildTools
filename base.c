@@ -57,36 +57,8 @@ int memcmp(const void* lhs, const void* rhs, size_t count)
 	return (0);
 }
 
-#pragma function(sqrtf)
-float sqrtf(float arg)
-{
-	unsigned int i = *((unsigned int*)&arg);
-//[c]	Adjust bias
-	i  += 127 << 23;
-//[c]	Approximation of square root
-	i >>= 1;
-	return *((float*)&i);
-}
-
-#pragma function(sqrt)
-double sqrt(double arg)
-{
-	double x;
-	double y;
-	double tempf;
-	unsigned long* tfptr = ((unsigned long*)&tempf) + 1;
-	tempf = arg;
-	*tfptr = (0xbfcdd90a - *tfptr) >> 1;
-	x = tempf;
-	y = arg * 0.5;
-//[c]	The more you make replicates of this statement the higher the accuracy, here only 2 replicates are used
-	x = (1.5 * x) - (x * x) * (x * y);
-	x = (1.5 * x) - (x * x) * (x * y);
-	return (arg * x);
-}
-
 //[c]Macros
-#define null	NULL
+#define null	((void*)0)
 #define false	0
 #define true	!false
 #define type_of	__typeof__
@@ -138,10 +110,6 @@ typedef unsigned long long	n64;
 typedef n8	byte;
 typedef n64	bool;
 typedef n32	char8;
-typedef i8	rel8;
-typedef i16	rel16;
-typedef i32	rel32;
-typedef i64	rel64;
 typedef float	f32;
 typedef double	f64;
 
@@ -177,10 +145,6 @@ typedef double	f64;
 	memset(cast(void*, addr), cast(int, value), cast(size_t, size))
 #define mem_zero(addr, size) \
 	mem_set(addr, size, 0)
-#define mem_relative_set(addr, value) \
-	do{*(addr) = cast(void*, (char*)(value) - (char*)(addr));}while(0)
-#define mem_relative_get(addr) \
-	cast(void*, cast(char*, addr) + cast(char*, *(addr)))
 #define is_power_of_two(x) \
 	(((x) > 0) && (((x) & ((x) - 1)) <= 0))
 #define mem_align_forward(addr, alignment) \
@@ -203,26 +167,18 @@ i64 char8_size_naive(char8 c8)
 //[of]:i64	char8_size(char8 c8)
 i64 char8_size(char8 c8)
 {
-	static const n32 mins[] = {4194304, 0, 128, 2048, 65536};
-	static const i32 shifte[] = {0, 6, 4, 2, 0};
-	static const i32 masks[]  = {0x00, 0x7f, 0x1f, 0x0f, 0x07};
-	static const i32 shiftc[] = {0, 18, 12, 6, 0};
-	char* bytes = cast(char*, &c8);
 	i64 size = char8_size_naive(c8);
-	n32 c32 = (bytes[0] & masks[size]) << 18;
-	c32 |= (bytes[1] & 0x3f) << 12;
-	c32 |= (bytes[2] & 0x3f) << 6;
-	c32 |= (bytes[3] & 0x3f) << 0;
-	c32 >>= shiftc[size];
-	i32 err = (c32 < mins[size]) << 6; // non-canonical encoding
-	err |= ((c32 >> 11) == 0x1b) << 7;  // surrogate half
-	err |= (c32 > 0x10FFFF) << 8;  // out of range
-	err |= (bytes[1] & 0xc0) >> 2;
-	err |= (bytes[2] & 0xc0) >> 4;
-	err |= (bytes[3]) >> 6;
-	err ^= 0x2a; // incorrect top two bits of each tail byte
-	err >>= shifte[size];
-	size = err ? 0 : size;
+	bool valid = false;
+	valid = (c8 <= 0x7f) ? true : valid;
+	bool is_2byte = ((c8 & 0xc0e0) == 0x80c0);
+	bool is_3byte = ((c8 & 0xc0c0f0) == 0x8080e0);
+	bool is_4byte = ((c8 & 0xc0c0c0f8) == 0x808080f0);
+	valid = ((0x80c2 <= c8) & (c8 <= 0xbfdf)) ? is_2byte : valid;
+//[c]	surrogate half
+	valid = ((0xeda080 <= c8) & (c8 <= 0xedbfbf)) ? false : valid;
+	valid = ((0x80a0e0 <= c8) & (c8 <= 0xbfbfef)) ? is_3byte : valid;
+	valid = ((0x808090f0 <= c8) & (c8 <= 0xbfbf8ff4)) ? is_4byte : valid;
+	size = valid ? size : 0;
 	return (size);
 }
 //[cf]
@@ -474,7 +430,9 @@ void string_format_args(struct write_context* wcontext, string_format_write_proc
 			char buf[66];
 			w(wcontext, string_from_integer(&buf, arg, base, false, zero_padding));
 		} else if ((type_flag & nat_mask) && (type_size != 0)) {
-			n64 arg = va_arg(args, n32);
+			n32 arg = va_arg(args, n32);
+			arg &= (type_size == 8) ? 0x000000ff : 0xffffffff;
+			arg &= (type_size == 16) ? 0x0000ffff : 0xffffffff;
 			char buf[66];
 			w(wcontext, string_from_integer(&buf, arg, base, false, zero_padding));
 		} else if ((type_flag & string_format_type_int) && (type_size == 64)) {
@@ -482,7 +440,9 @@ void string_format_args(struct write_context* wcontext, string_format_write_proc
 			char buf[66];
 			w(wcontext, string_from_integer(&buf, arg, 10, true, 0));
 		} else if ((type_flag & string_format_type_int) && (type_size != 0)) {
-			i64 arg = va_arg(args, i32);
+			i32 arg = va_arg(args, i32);
+			arg &= (type_size == 8) ? 0x000000ff : 0xffffffff;
+			arg &= (type_size == 16) ? 0x0000ffff : 0xffffffff;
 			char buf[66];
 			w(wcontext, string_from_integer(&buf, arg, 10, true, 0));
 		} else if ((type_flag & string_format_type_char) && (type_size == 0)) {
@@ -646,7 +606,7 @@ void _hope(bool cond, const char* proc_name, const char* format, ...)
 //[c]Command line arguments
 #define MAX_CMDLINE_LEN 32767
 char args[MAX_CMDLINE_LEN * 3];
-i64 argc;
+i64 args_count;
 //[of]:void parse_command_line_args(void)
 void parse_command_line_args(void)
 {
@@ -680,11 +640,11 @@ void parse_command_line_args(void)
 					continue;
 				}
 				args[i] = 0;
-				argc++;
+				args_count++;
 			} break;
 		}
 	}
-	argc++;
+	args_count++;
 }
 //[cf]
 

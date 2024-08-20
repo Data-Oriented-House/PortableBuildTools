@@ -7,7 +7,7 @@ end
 def tools
 	def build-pbt
 		caption = Build PBT
-		directory = W:\dev\PortableBuildTools
+		directory = D:\dev\PortableBuildTools
 		command = cmd.exe
 		arguments = /c D:\BuildTools\devcmd.bat && build.bat
 		save-all = true
