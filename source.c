@@ -1308,8 +1308,6 @@ void install(void)
 		msvc_packages_count++;
 		string_format(array_expand(msvc_packages[msvc_packages_count]), "microsoft.vc.{s}.asan.headers.base", msvc_version);
 		msvc_packages_count++;
-		string_format(array_expand(msvc_packages[msvc_packages_count]), "microsoft.vc.{s}.premium.tools.{s}.base.base", msvc_version, host_arch);
-		msvc_packages_count++;
 		string_format(array_expand(msvc_packages[msvc_packages_count]), "microsoft.vc.{s}.pgo.headers.base", msvc_version);
 		msvc_packages_count++;
 		string_format(array_expand(msvc_packages[msvc_packages_count]), "microsoft.vc.{s}.tools.host{s}.target{s}.base", msvc_version, host_arch, target_arch);
@@ -1319,8 +1317,6 @@ void install(void)
 		string_format(array_expand(msvc_packages[msvc_packages_count]), "microsoft.vc.{s}.crt.{s}.desktop.base", msvc_version, target_arch);
 		msvc_packages_count++;
 		string_format(array_expand(msvc_packages[msvc_packages_count]), "microsoft.vc.{s}.crt.{s}.store.base", msvc_version, target_arch);
-		msvc_packages_count++;
-		string_format(array_expand(msvc_packages[msvc_packages_count]), "microsoft.vc.{s}.crt.redist.{s}.base", msvc_version, target_arch);
 		msvc_packages_count++;
 		string_format(array_expand(msvc_packages[msvc_packages_count]), "microsoft.vc.{s}.premium.tools.host{s}.target{s}.base", msvc_version, host_arch, target_arch);
 		msvc_packages_count++;
@@ -1374,6 +1370,56 @@ void install(void)
 				break;
 			}
 			json_object_skip(&p);
+		}
+		json_file_context_restore(&jc, packages_state);
+		bool redist_found = false;
+		char redist_suffix[32] = {0};
+		string_format(array_expand(redist_suffix), string_is(target_arch, "arm") ? ".onecore.desktop" : "");
+		char redist_name[128];
+		string_format(array_expand(redist_name), "microsoft.vc.{s}.crt.redist.{s}{s}.base", msvc_version, target_arch, redist_suffix);
+		while (json_array_next(&p)) {
+			hope(json_object_key_find(&p, "id"), "id not found");
+			char id[64];
+			json_string_extract(&p, array_expand(id));
+			char id_lower[count_of(id)];
+			mem_copy(id_lower, id, size_of(id));
+			string_lower(id_lower);
+			if (string_is(id_lower, redist_name)) {
+				redist_found = true;
+				string_format(array_expand(msvc_packages[msvc_packages_count]), "{s}", redist_name);
+				msvc_packages_count++;
+				break;
+			}
+			json_object_skip(&p);
+		}
+		json_file_context_restore(&jc, packages_state);
+		if (!redist_found) {
+			string_format(array_expand(redist_name), "microsoft.visualcpp.crt.redist.{s}{s}", target_arch, redist_suffix);
+			while (json_array_next(&p)) {
+				hope(json_object_key_find(&p, "id"), "id not found");
+				char id[64];
+				json_string_extract(&p, array_expand(id));
+				char id_lower[count_of(id)];
+				mem_copy(id_lower, id, size_of(id));
+				string_lower(id_lower);
+				if (string_is(id_lower, redist_name)) {
+					redist_found = true;
+					hope(json_object_key_find(&p, "dependencies"), "dependencies not found");
+					while (json_object_next(&p)) {
+						char redist_package[128];
+						json_object_key_extract(&p, array_expand(redist_package));
+						if (string_ends_with(redist_package, ".base")) {
+							string_lower(redist_package);
+							string_format(array_expand(msvc_packages[msvc_packages_count]), "{s}", redist_package);
+							msvc_packages_count++;
+							break;
+						}
+						json_object_skip(&p);
+					}
+					break;
+				}
+				json_object_skip(&p);
+			}
 		}
 		json_file_context_restore(&jc, packages_state);
 		println("Downloading the packages...");
@@ -1580,8 +1626,14 @@ void install(void)
 	char redist_path[MAX_PATH * 3];
 	string_format(array_expand(redist_path), "{s}\\VC\\Redist", install_path);
 	if (folder_exists(redist_path)) {
+		char debug_version_path[MAX_PATH * 3];
+		string_format(array_expand(debug_version_path), "{s}\\MSVC", redist_path);
+		folder_handle debug_version_folder = folder_open(debug_version_path);
+		char debug_version[MAX_PATH * 3];
+		folder_next(&debug_version_folder, &debug_version);
+		folder_close(&debug_version_folder);
 		char debug_path[MAX_PATH * 3];
-		string_format(array_expand(debug_path), "{s}\\MSVC\\{s}\\debug_nonredist", redist_path, msvcv);
+		string_format(array_expand(debug_path), "{s}\\{s}\\debug_nonredist", debug_version_path, debug_version);
 		folder_handle debug_folder = folder_open(debug_path);
 		char debug_target[MAX_PATH * 3];
 		while (folder_next(&debug_folder, &debug_target)) {
