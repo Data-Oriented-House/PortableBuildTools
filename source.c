@@ -1672,7 +1672,7 @@ void install(void)
 		file_write(&f, string_to_array("$env:WindowsSDKDir = (Join-Path $InstallPath '\\Windows Kits\\10')\n"));
 		file_write(&f, string_to_array("$VCToolsVersion = (Get-ChildItem -Directory (Join-Path $InstallPath '\\VC\\Tools\\MSVC' | Sort-Object -Descending LastWriteTime | Select-Object -First 1) -ErrorAction SilentlyContinue).Name\n"));
 		file_write(&f, string_to_array("if (!$VCToolsVersion) { throw 'VCToolsVersion cannot be determined.' }\n"));
-		file_write(&f, string_to_array("$env:VCToolsInstallDir = Join-Path $InstallPath '\\VC\\Tools\\MSVC' $VCToolsVersion\n"));
+		file_write(&f, string_to_array("$env:VCToolsInstallDir = Join-Path (Join-Path $InstallPath '\\VC\\Tools\\MSVC') $VCToolsVersion\n"));
 		file_write(&f, string_to_array("$env:WindowsSDKVersion = (Get-ChildItem -Directory (Join-Path $env:WindowsSDKDir 'bin') -ErrorAction SilentlyContinue | Sort-Object -Descending LastWriteTime | Select-Object -First 1).Name\n"));
 		file_write(&f, string_to_array("if (!$env:WindowsSDKVersion ) { throw 'WindowsSDKVersion cannot be determined.' }\n"));
 		string_format(array_expand(buf), "$env:VSCMD_ARG_TGT_ARCH = '{s}'\n", target_arch);
