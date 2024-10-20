@@ -854,17 +854,17 @@ char release_license_url[L_MAX_URL_LENGTH * 3];
 char preview_manifest_url[L_MAX_URL_LENGTH * 3];
 char preview_license_url[L_MAX_URL_LENGTH * 3];
 
-//[c]NOTE: actual number of versions is 12, not 32
+//[c]NOTE: actual number of versions is 13, not 32
 char release_msvc_versions[32][16];
 i64 release_msvc_versions_count;
-//[c]NOTE: actual number of versions is 13, not 32
+//[c]NOTE: actual number of versions is 14, not 32
 char preview_msvc_versions[32][16];
 i64 preview_msvc_versions_count;
 
-//[c]NOTE: actual number of versions is 5, not 16
+//[c]NOTE: actual number of versions is 6, not 16
 char release_sdk_versions[16][8];
 i64 release_sdk_versions_count;
-//[c]NOTE: actual number of versions is 5, not 16
+//[c]NOTE: actual number of versions is 6, not 16
 char preview_sdk_versions[16][8];
 i64 preview_sdk_versions_count;
 
@@ -1336,13 +1336,13 @@ void install(void)
 		sdk_packages_count++;
 		string_format(array_expand(sdk_packages[sdk_packages_count]), "Windows SDK for Windows Store Apps Libs-x86_en-us.msi");
 		sdk_packages_count++;
-		string_format(array_expand(sdk_packages[sdk_packages_count]), "Windows SDK OnecoreUap Headers x86-x86_en-us.msi");
-		sdk_packages_count++;
-		string_format(array_expand(sdk_packages[sdk_packages_count]), "Windows SDK Desktop Headers x86-x86_en-us.msi");
-		sdk_packages_count++;
 		string_format(array_expand(sdk_packages[sdk_packages_count]), "Universal CRT Headers Libraries and Sources-x86_en-us.msi");
 		sdk_packages_count++;
 		string_format(array_expand(sdk_packages[sdk_packages_count]), "Windows SDK Desktop Libs {s}-x86_en-us.msi", target_arch);
+		sdk_packages_count++;
+		string_format(array_expand(sdk_packages[sdk_packages_count]), "Windows SDK Desktop Headers {s}-x86_en-us.msi", target_arch);
+		sdk_packages_count++;
+		string_format(array_expand(sdk_packages[sdk_packages_count]), "Windows SDK OnecoreUap Headers {s}-x86_en-us.msi", target_arch);
 		sdk_packages_count++;
 		char sdk_package[32] = {0};
 		json_context jc;
@@ -1732,7 +1732,7 @@ void install(void)
 		file_write(&f, string_to_array("$env:WindowsSDKDir = (Join-Path $InstallPath '\\Windows Kits\\10')\n"));
 		file_write(&f, string_to_array("$VCToolsVersion = (Get-ChildItem -Directory (Join-Path $InstallPath '\\VC\\Tools\\MSVC' | Sort-Object -Descending LastWriteTime | Select-Object -First 1) -ErrorAction SilentlyContinue).Name\n"));
 		file_write(&f, string_to_array("if (!$VCToolsVersion) { throw 'VCToolsVersion cannot be determined.' }\n"));
-		file_write(&f, string_to_array("$env:VCToolsInstallDir = Join-Path $InstallPath '\\VC\\Tools\\MSVC' $VCToolsVersion\n"));
+		file_write(&f, string_to_array("$env:VCToolsInstallDir = Join-Path (Join-Path $InstallPath '\\VC\\Tools\\MSVC') $VCToolsVersion\n"));
 		file_write(&f, string_to_array("$env:WindowsSDKVersion = (Get-ChildItem -Directory (Join-Path $env:WindowsSDKDir 'bin') -ErrorAction SilentlyContinue | Sort-Object -Descending LastWriteTime | Select-Object -First 1).Name\n"));
 		file_write(&f, string_to_array("if (!$env:WindowsSDKVersion ) { throw 'WindowsSDKVersion cannot be determined.' }\n"));
 		string_format(array_expand(buf), "$env:VSCMD_ARG_TGT_ARCH = '{s}'\n", target_arch);
