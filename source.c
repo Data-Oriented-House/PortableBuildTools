@@ -1336,13 +1336,13 @@ void install(void)
 		sdk_packages_count++;
 		string_format(array_expand(sdk_packages[sdk_packages_count]), "Windows SDK for Windows Store Apps Libs-x86_en-us.msi");
 		sdk_packages_count++;
+		string_format(array_expand(sdk_packages[sdk_packages_count]), "Windows SDK OnecoreUap Headers x86-x86_en-us.msi");
+		sdk_packages_count++;
+		string_format(array_expand(sdk_packages[sdk_packages_count]), "Windows SDK Desktop Headers x86-x86_en-us.msi");
+		sdk_packages_count++;
 		string_format(array_expand(sdk_packages[sdk_packages_count]), "Universal CRT Headers Libraries and Sources-x86_en-us.msi");
 		sdk_packages_count++;
 		string_format(array_expand(sdk_packages[sdk_packages_count]), "Windows SDK Desktop Libs {s}-x86_en-us.msi", target_arch);
-		sdk_packages_count++;
-		string_format(array_expand(sdk_packages[sdk_packages_count]), "Windows SDK Desktop Headers {s}-x86_en-us.msi", target_arch);
-		sdk_packages_count++;
-		string_format(array_expand(sdk_packages[sdk_packages_count]), "Windows SDK OnecoreUap Headers {s}-x86_en-us.msi", target_arch);
 		sdk_packages_count++;
 		char sdk_package[32] = {0};
 		json_context jc;
