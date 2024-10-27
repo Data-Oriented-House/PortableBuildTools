@@ -109,7 +109,7 @@ typedef unsigned int	n32;
 typedef unsigned long long	n64;
 typedef n8	byte;
 typedef n64	bool;
-typedef n32	char8;
+typedef n32	uchar;
 typedef float	f32;
 typedef double	f64;
 
@@ -151,8 +151,8 @@ typedef double	f64;
 	((is_power_of_two(alignment)) ? (((addr) + ((alignment) - 1)) & ~((alignment) - 1)) : 0)
 
 //[c]Unicode and strings
-//[of]:i64	char8_size_naive(char8 c8)
-i64 char8_size_naive(char8 c8)
+//[of]:i64	uchar_size_naive(uchar uc)
+i64 uchar_size_naive(uchar uc)
 {
 	static const char sizes[32] = {
 		1, 1, 1, 1, 1, 1, 1, 1,
@@ -160,19 +160,21 @@ i64 char8_size_naive(char8 c8)
 		0, 0, 0, 0, 0, 0, 0, 0,
 		2, 2, 2, 2, 3, 3, 4, 0
 	};
-	unsigned char c = *cast(unsigned char*, &c8);
-	return (sizes[c >> 3]);
+	unsigned char c = *cast(unsigned char*, &uc);
+	i64 out = sizes[c >> 3];
+	out = uc ? out : 0;
+	return (out);
 }
 //[cf]
-//[of]:i64	char8_size(char8 c8)
-i64 char8_size(char8 c8)
+//[of]:i64	uchar_size(uchar uc)
+i64 uchar_size(uchar uc)
 {
 	static const n32 mins[] = {4194304, 0, 128, 2048, 65536};
 	static const i32 shifte[] = {0, 6, 4, 2, 0};
 	static const i32 masks[]  = {0x00, 0x7f, 0x1f, 0x0f, 0x07};
 	static const i32 shiftc[] = {0, 18, 12, 6, 0};
-	char* bytes = cast(char*, &c8);
-	i64 size = char8_size_naive(c8);
+	char* bytes = cast(char*, &uc);
+	i64 size = uchar_size_naive(uc);
 	n32 c32 = (bytes[0] & masks[size]) << 18;
 	c32 |= (bytes[1] & 0x3f) << 12;
 	c32 |= (bytes[2] & 0x3f) << 6;
@@ -187,15 +189,30 @@ i64 char8_size(char8 c8)
 	err ^= 0x2a; // incorrect top two bits of each tail byte
 	err >>= shifte[size];
 	size = err ? 0 : size;
+
+//[c]//	TODO: work this one out, much less obtuse
+//[c]	i64 size = uchar_size_naive(uc);
+//[c]	bool valid = false;
+//[c]	valid = (uc <= 0x7f) ? true : valid;
+//[c]	bool is_2byte = ((uc & 0xc0e0) == 0x80c0);
+//[c]	bool is_3byte = ((uc & 0xc0c0f0) == 0x8080e0);
+//[c]	bool is_4byte = ((uc & 0xc0c0c0f8) == 0x808080f0);
+//[c]	valid = ((0x80c2 <= uc) & (uc <= 0xbfdf)) ? is_2byte : valid;
+//[c]//	surrogate half
+//[c]	valid = ((0xeda080 <= uc) & (uc <= 0xedbfbf)) ? false : valid;
+//[c]	valid = ((0x80a0e0 <= uc) & (uc <= 0xbfbfef)) ? is_3byte : valid;
+//[c]	valid = ((0x808090f0 <= uc) & (uc <= 0xbfbf8ff4)) ? is_4byte : valid;
+//[c]	size = valid ? size : 0;
+
 	return (size);
 }
 //[cf]
-//[of]:char8	string_decode_char8(const char* s)
-char8 string_decode_char8(const char* s)
+//[of]:uchar	string_decode_uchar(const char* s)
+uchar string_decode_uchar(const char* s)
 {
-	char8 c8;
-	char* bytes = cast(char*, &c8);
-	i64 size = char8_size_naive(*s);
+	uchar uc;
+	char* bytes = cast(char*, &uc);
+	i64 size = uchar_size_naive(*s);
 	size = *s ? size : 0;
 	char c = *s;
 	c = (size < 1) ? 0 : c;
@@ -212,17 +229,7 @@ char8 string_decode_char8(const char* s)
 	c = *s;
 	c = (size < 4) ? 0 : c;
 	bytes[3] = c;
-	return (c8);
-}
-//[cf]
-//[of]:i64	string_count(const char* s)
-i64 string_count(const char* s)
-{
-	i64 count = 0;
-	while (s[count] != 0) {
-		count++;
-	}
-	return (count);
+	return (uc);
 }
 //[cf]
 //[of]:bool	string_is(const char* s, const char* x)
@@ -240,6 +247,57 @@ bool string_is(const char* s, const char* x)
 	return (match);
 }
 //[cf]
+//[of]:i64	string_count(const char* s)
+i64 string_count(const char* s)
+{
+	i64 count = 0;
+	while (s[count] != 0) {
+		count++;
+	}
+	return (count);
+}
+//[cf]
+//[of]:i64	string_copy(array(char, buf), const char* s)
+i64 string_copy(array(char, buf), const char* s)
+{
+	buf_count--;
+	i64 pos = 0;
+	while (*s != 0) {
+		i64 char_size = uchar_size(string_decode_uchar(s));
+		char_size = clamp_bot(char_size, 1);
+		i64 space_left = buf_count - pos;
+		if (space_left < char_size) {
+			break;
+		}
+		mem_copy(buf + pos, s, char_size);
+		pos += char_size;
+		s += char_size;
+	}
+	buf[pos] = 0;
+	return (pos);
+}
+//[cf]
+//[of]:i64	string_append(array(char, buf), const char* s)
+i64 string_append(array(char, buf), const char* s)
+{
+	buf_count--;
+	i64 b_count = string_count(buf);
+	i64 pos = b_count;
+	while (*s != 0) {
+		i64 char_size = uchar_size(string_decode_uchar(s));
+		char_size = clamp_bot(char_size, 1);
+		i64 space_left = buf_count - pos;
+		if (space_left < char_size) {
+			break;
+		}
+		mem_copy(buf + pos, s, char_size);
+		pos += char_size;
+		s += char_size;
+	}
+	buf[pos] = 0;
+	return (pos - b_count);
+}
+//[cf]
 //[c]TODO: string_from_float
 //[of]:[internal] char*	string_from_integer(char (*buf)[66], n64 x, n64 base, bool is_signed, n64 leading_zeroes)
 char* string_from_integer(char (*buf)[66], n64 x, n64 base, bool is_signed, n64 leading_zeroes)
@@ -248,26 +306,216 @@ char* string_from_integer(char (*buf)[66], n64 x, n64 base, bool is_signed, n64 
 	debug_assert(base <= 36);
 	bool is_neg = (is_signed && (cast(i64, x) < 0));
 	x = is_neg ? -(cast(i64, x)) : x;
+	char* numbers = *buf;
 	i64 pos = 65;
-	(*buf)[pos] = 0;
 	do {
 		pos--;
 		n64 remainder = x % base;
-		(*buf)[pos] = digits[remainder];
+		numbers[pos] = digits[remainder];
 		x /= base;
 	} while (x > 0);
 	i64 zero_pos = 65 - leading_zeroes;
 	i64 zero_size = max(pos - zero_pos, 0);
-	mem_set(&buf[zero_pos], zero_size, '0');
+	mem_set(&numbers[zero_pos], zero_size, '0');
 	pos -= zero_size;
 	pos--;
-	(*buf)[pos] = '-';
+	numbers[pos] = '-';
 	pos += is_neg ? 0 : 1;
-	return (*buf + pos);
+	numbers[65] = 0;
+	return (&numbers[pos]);
+}
+//[cf]
+//[of]:[internal] bool	string_formatter_run(struct string_formatter* f, const char* format)
+//[c]String formatting using based on views specified as {view}, {{this} escapes the opening brace
+//[c]Views:
+//[c]b8/16/32/64+ - binary view with optional leading zeroes
+//[c]x8/16/32/64+ - hexadecimal view with optional leading zeroes
+//[c]n8/16/32/64 - natural numbers
+//[c]i8/16/32/64 - integer numbers
+//[c]TODO: f32/64.r - floating-point numbers with optional rounding
+//[c]c - 1-byte character
+//[c]u - 4-byte UTF-8 encoded character (uchar)
+//[c]s - UTF-8 encoded string
+//[c]
+//[c]Examples:
+//[c]"hello {{world}}"
+//[c]"{i32} = 0x{x32} = 0b{b32+}", 37, 37, 37
+//[c]"{s} {u}{u}{c}", "hello", string_decode_uchar("世"), string_decode_uchar("界"), '!'
+//[c]TODO
+//[c]"{f32.2}", 0.9876
+enum string_formatter_type {
+	string_formatter_type_bin = 1,
+	string_formatter_type_hex,
+	string_formatter_type_nat,
+	string_formatter_type_int,
+	string_formatter_type_char,
+	string_formatter_type_uchar,
+	string_formatter_type_str,
+};
+struct string_formatter {
+	i64	format_pos;
+	bool	args_invalid;
+	bool	parsing_view;
+	const char*	view;
+	char	value_buf[66];
+
+	const char*	value;
+};
+bool string_formatter_run(struct string_formatter* f, const char* format, va_list* args)
+{
+	const char* chunk = format + f->format_pos;
+	char c = chunk[0];
+	uchar uc = string_decode_uchar(chunk);
+	i64 uc_size = uchar_size(uc);
+	f->format_pos += clamp_bot(uchar_size(uc), 1);
+	if (!f->parsing_view) {
+		switch (c) {
+			case 0: {
+				return (false);
+			} break;
+			case '{': {
+				f->parsing_view = true;
+				f->view = chunk;
+				f->value = null;
+				return (true);
+			} break;
+			default: {
+				mem_copy(f->value_buf, &uc, uc_size);
+				f->value_buf[uc_size] = 0;
+				f->value = f->value_buf;
+				return (true);
+			} break;
+		}
+	}
+	if (f->view[1] == '{') {
+		f->parsing_view = false;
+		mem_copy(f->value_buf, "{", 2);
+		f->value = f->value_buf;
+		return (true);
+	}
+	if (c == 0) {
+		f->format_pos--;
+		f->parsing_view = false;
+		mem_copy(f->value_buf, "?", 2);
+		f->value = f->value_buf;
+		return (true);
+	}
+	if (c != '}') {
+		f->value = null;
+		return (true);
+	}
+	f->view++;
+	enum string_formatter_type	type_flag = 0;
+	type_flag = (f->view[0] == 'b') ? string_formatter_type_bin : type_flag;
+	type_flag = (f->view[0] == 'x') ? string_formatter_type_hex : type_flag;
+	type_flag = (f->view[0] == 'n') ? string_formatter_type_nat : type_flag;
+	type_flag = (f->view[0] == 'i') ? string_formatter_type_int : type_flag;
+	type_flag = (f->view[0] == 'c') ? string_formatter_type_char : type_flag;
+	type_flag = (f->view[0] == 'u') ? string_formatter_type_uchar : type_flag;
+	type_flag = (f->view[0] == 's') ? string_formatter_type_str : type_flag;
+	f->view += (type_flag != 0) ? 1 : 0;
+	n64 type_size = 0;
+	type_size = (f->view[0] == '8') ? 8 : type_size;
+	type_size = ((f->view[0] == '1') & (f->view[1] == '6')) ? 16 : type_size;
+	type_size = ((f->view[0] == '3') & (f->view[1] == '2')) ? 32 : type_size;
+	type_size = ((f->view[0] == '6') & (f->view[1] == '4')) ? 64 : type_size;
+	f->view += (type_size > 0) ? 1 : 0;
+	f->view += (type_size > 8) ? 1 : 0;
+	n64 zero_padding = 0;
+	zero_padding = (f->view[0] == '+') ? type_size : zero_padding;
+	f->view += (zero_padding != 0) ? 1 : 0;
+	zero_padding = (type_flag == string_formatter_type_hex) ? (zero_padding / 4) : zero_padding;
+	type_flag = (f->view[0] != '}') ? 0 : type_flag;
+	type_flag = ((type_flag == string_formatter_type_nat) && (zero_padding != 0)) ? 0 : type_flag;
+	type_flag = ((type_flag == string_formatter_type_int) && (zero_padding != 0)) ? 0 : type_flag;
+	type_flag = ((type_flag == string_formatter_type_char) && (type_size != 0)) ? 0 : type_flag;
+	type_flag = ((type_flag == string_formatter_type_uchar) && (type_size != 0)) ? 0 : type_flag;
+	type_flag = ((type_flag == string_formatter_type_str) && (type_size != 0)) ? 0 : type_flag;
+	type_flag = f->args_invalid ? 0 : type_flag;
+	f->parsing_view = false;
+//[c]	Validate the types and extract args
+	switch (type_flag) {
+		case string_formatter_type_bin:
+		case string_formatter_type_hex:
+		case string_formatter_type_nat: {
+			n64 arg;
+			if (type_size == 64) {
+				arg = va_arg(*args, n64);
+			} else {
+				arg = va_arg(*args, n32);
+			}
+			n64 base = 10;
+			base = (type_flag == string_formatter_type_bin) ? 2 : base;
+			base = (type_flag == string_formatter_type_hex) ? 16 : base;
+			arg &= (type_size == 8) ? 0x00000000000000ff : 0xffffffffffffffff;
+			arg &= (type_size == 16) ? 0x000000000000ffff : 0xffffffffffffffff;
+			arg &= (type_size == 32) ? 0x00000000ffffffff : 0xffffffffffffffff;
+			f->value = string_from_integer(&f->value_buf, arg, base, false, zero_padding);
+		} break;
+		case string_formatter_type_int: {
+			i64 arg;
+			if (type_size == 64) {
+				arg = va_arg(*args, i64);
+			} else {
+				arg = va_arg(*args, i32);
+			}
+			arg &= (type_size == 8) ? 0x00000000000000ff : 0xffffffffffffffff;
+			arg &= (type_size == 16) ? 0x000000000000ffff : 0xffffffffffffffff;
+			arg &= (type_size == 32) ? 0x00000000ffffffff : 0xffffffffffffffff;
+			f->value = string_from_integer(&f->value_buf, arg, 10, true, 0);
+		} break;
+		case string_formatter_type_char: {
+			char arg = cast(char, va_arg(*args, n32));
+			f->value_buf[0] = arg;
+			f->value_buf[1] = 0;
+			f->value = f->value_buf;
+		} break;
+		case string_formatter_type_uchar: {
+			uchar arg = va_arg(*args, uchar);
+			i64 arg_size = uchar_size(arg);
+			mem_copy(f->value_buf, &arg, arg_size);
+			f->value_buf[arg_size] = 0;
+			f->value = f->value_buf;
+		} break;
+		case string_formatter_type_str: {
+			f->value = va_arg(*args, const char*);
+		} break;
+		default: {
+			f->args_invalid = true;
+			mem_copy(f->value_buf, "?", 2);
+			f->value = f->value_buf;
+		} break;
+	}
+	return (true);
+}
+//[cf]
+//[of]:[internal] void	string_format_args(array(char, buf), const char* format, va_list* args)
+void string_format_args(array(char, buf), const char* format, va_list* args)
+{
+	buf[0] = 0;
+	struct string_formatter f = (struct string_formatter){0};
+	while (string_formatter_run(&f, format, args)) {
+		if (f.value == null) {
+			continue;
+		}
+		i64 n = string_append(buf, buf_count, f.value);
+		if (n < string_count(f.value)) {
+			break;
+		}
+	}
+}
+//[cf]
+//[of]:void	string_format(array(char, buf), const char* format, ...)
+void string_format(array(char, buf), const char* format, ...)
+{
+	va_list args;
+	va_start(args, format);
+	string_format_args(buf, buf_count, format, &args);
+	va_end(args);
 }
 //[cf]
 
-//[c]Basic console API
+//[c]Basic console API and printing
 //[of]:void	sys_console_read(array(char, buf))
 void sys_console_read(array(char, buf))
 {
@@ -285,7 +533,7 @@ void sys_console_read(array(char, buf))
 		debug_assert(str_size > 0); // unicode conversion bug
 		const char* str = chars;
 		while (str_size > 0) {
-			i64 char_size = char8_size(string_decode_char8(str));
+			i64 char_size = uchar_size(string_decode_uchar(str));
 			debug_assert(char_size > 0); // unicode decoding bug
 			i64 space_left = buf_count - pos;
 			buffer_filled = (space_left < char_size) ? true : buffer_filled;
@@ -302,24 +550,36 @@ void sys_console_read(array(char, buf))
 }
 //[cf]
 //[of]:[internal] void	_sys_console_write(HANDLE handle, const char* str)
+//[c]NOTE: writes the string in chunks of valid characters, writes invalid bytes as fffd
 void _sys_console_write(HANDLE handle, const char* str)
 {
-	WCHAR wstr[1024];
-	i64 max_codepoints = count_of(wstr) / 2;
+	char buf[mem_page_size];
+	i64 buf_pos = 0;
+	WCHAR wbuf[count_of(buf)];
 	while (*str != 0) {
-		const char* chunk = str;
-		i64 chunk_size = 0;
-		i64 codepoints = 0;
-		while ((*str != 0) & (codepoints <= max_codepoints)) {
-			i64 char_size = char8_size(string_decode_char8(str));
-			debug_assert(char_size > 0); // unicode decoding bug
-			chunk_size += char_size;
-			str += char_size;
-			codepoints++;
+		i64 space_left = count_of(buf) - buf_pos;
+		uchar uc = string_decode_uchar(str);
+		i64 char_size = uchar_size(uc);
+		str += clamp_bot(char_size, 1);
+		if (char_size == 0) {
+			char_size = 3;
+			mem_copy(&uc, "\ufffd", 4);
 		}
-		int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, chunk, chunk_size, wstr, count_of(wstr));
+		if (space_left < char_size) {
+			// oh nooo not enough space whatever will i dooo!
+			// just flush whatever is there, actually.
+			int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, buf, buf_pos, wbuf, count_of(wbuf));
+			debug_assert(n > 0); // unicode conversion bug
+			WriteConsoleW(handle, wbuf, n, null, null);
+			buf_pos = 0;
+		}
+		mem_copy(&buf[buf_pos], &uc, char_size);
+		buf_pos += char_size;
+	}
+	if (buf_pos > 0) {
+		int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, buf, buf_pos, wbuf, count_of(wbuf));
 		debug_assert(n > 0); // unicode conversion bug
-		WriteConsoleW(handle, wstr, n, null, null);
+		WriteConsoleW(handle, wbuf, n, null, null);
 	}
 }
 //[cf]
@@ -336,247 +596,53 @@ void sys_error_write(const char* str)
 }
 //[cf]
 
-//[c]Write context used for formatting and printing functions
-struct write_context {
-	char*	buf;
-	i64	buf_count;
-	i64	pos;
-};
-
-//[of]:[internal] void	string_format_args(struct write_context* wcontext, string_format_write_proc w, const char* format, va_list args)
-//[c]String formatting using an argument list into views specified as {view}, {{this}} escapes the braces
-//[c]Views:
-//[c]b8/16/32/64+ - binary view with optional leading zeroes
-//[c]x8/16/32/64+ - hexadecimal view with optional leading zeroes
-//[c]n8/16/32/64 - natural numbers
-//[c]i8/16/32/64 - integer numbers
-//[c]TODO: f32/64.r - floating-point numbers with optional rounding
-//[c]c - 1-byte character
-//[c]u - 4-byte UTF-8 encoded character (char8)
-//[c]s - UTF-8 encoded string
-//[c]
-//[c]Examples:
-//[c]"hello {{world}}"
-//[c]"{i32} = 0x{x32} = 0b{b32+}", 37, 37, 37
-//[c]"{s} {u}{u}{c}", "hello", string_decode_char8("世"), string_decode_char8("界"), '!'
-//[c]TODO
-//[c]"{f32.2}", 0.9876
-typedef void (*string_format_write_proc)(struct write_context*, const char*);
-enum string_format_type {
-	string_format_type_none	= 0,
-	string_format_type_bin	= 1 << 0,
-	string_format_type_hex	= 1 << 1,
-	string_format_type_nat	= 1 << 2,
-	string_format_type_int	= 1 << 3,
-	string_format_type_char	= 1 << 4,
-	string_format_type_uchar	= 1 << 5,
-	string_format_type_str	= 1 << 6,
-};
-void string_format_args(struct write_context* wcontext, string_format_write_proc w, const char* format, va_list args)
+//[of]:[internal] void	print_args(bool newline, const char* format, va_list* args)
+void print_args(bool newline, const char* format, va_list* args)
 {
-	bool args_invalid = false;
-	bool parsing_view = false;
-	const char* view = null;
-	while (*format != 0) {
-		const char* chunk = format;
-		char8 c8 = string_decode_char8(format);
-		format += clamp_bot(char8_size(c8), 1);
-		char symbol = chunk[0];
-		if (!parsing_view) {
-			if (symbol != '{') {
-				char* bytes = cast(char*, &c8);
-				char buf[5] = {bytes[0], bytes[1], bytes[2], bytes[3], 0};
-				w(wcontext, buf);
-				continue;
+	char flush_buf[mem_page_size] = {0};
+	struct string_formatter f = (struct string_formatter){0};
+	while (string_formatter_run(&f, format, args)) {
+		if (f.value == null) {
+			continue;
+		}
+		while (true) {
+			i64 n = string_append(flush_buf, count_of(flush_buf), f.value);
+			if (n == string_count(f.value)) {
+				break;
 			}
-			parsing_view = true;
-			view = chunk;
-			continue;
-		}
-		if (string_is(view, "{") && (symbol == '{')) {
-			w(wcontext, "{");
-			parsing_view = false;
-			continue;
-		}
-		if (symbol != '}') {
-			continue;
-		}
-		if (args_invalid) {
-			w(wcontext, "?");
-			parsing_view = false;
-			continue;
-		}
-		view++;
-//[c]		TODO: floating-point numbers, split at the dot to parse rounding
-		enum string_format_type type_flag = string_format_type_none;
-		type_flag |= (view[0] == 'b') ? string_format_type_bin : 0;
-		type_flag |= (view[0] == 'x') ? string_format_type_hex : 0;
-		type_flag |= (view[0] == 'n') ? string_format_type_nat : 0;
-		type_flag |= (view[0] == 'i') ? string_format_type_int : 0;
-		type_flag |= (view[0] == 'c') ? string_format_type_char : 0;
-		type_flag |= (view[0] == 'u') ? string_format_type_uchar : 0;
-		type_flag |= (view[0] == 's') ? string_format_type_str : 0;
-		view += (type_flag != 0) ? 1 : 0;
-		n64 type_size = 0;
-		type_size = (view[0] == '8') ? 8 : type_size;
-		type_size = ((view[0] == '1') & (view[1] == '6')) ? 16 : type_size;
-		type_size = ((view[0] == '3') & (view[1] == '2')) ? 32 : type_size;
-		type_size = ((view[0] == '6') & (view[1] == '4')) ? 64 : type_size;
-		view += (type_size > 0) ? 1 : 0;
-		view += (type_size > 8) ? 1 : 0;
-		n64 zero_padding = 0;
-		zero_padding = (view[0] == '+') ? type_size : zero_padding;
-		view += (zero_padding != 0) ? 1 : 0;
-		zero_padding = (type_flag & string_format_type_hex) ? (zero_padding / 4) : zero_padding;
-		zero_padding = (type_flag & (string_format_type_bin | string_format_type_hex)) ? zero_padding : 0;
-		n64 base = 10;
-		base = (type_flag & string_format_type_bin) ? 2 : base;
-		base = (type_flag & string_format_type_hex) ? 16 : base;
-		enum string_format_type nat_mask = (string_format_type_bin | string_format_type_hex | string_format_type_nat);
-		if ((type_flag & nat_mask) && (type_size == 64)) {
-			n64 arg = va_arg(args, n64);
-			char buf[66];
-			w(wcontext, string_from_integer(&buf, arg, base, false, zero_padding));
-		} else if ((type_flag & nat_mask) && (type_size != 0)) {
-			n32 arg = va_arg(args, n32);
-			arg &= (type_size == 8) ? 0x000000ff : 0xffffffff;
-			arg &= (type_size == 16) ? 0x0000ffff : 0xffffffff;
-			char buf[66];
-			w(wcontext, string_from_integer(&buf, arg, base, false, zero_padding));
-		} else if ((type_flag & string_format_type_int) && (type_size == 64)) {
-			i64 arg = va_arg(args, i64);
-			char buf[66];
-			w(wcontext, string_from_integer(&buf, arg, 10, true, 0));
-		} else if ((type_flag & string_format_type_int) && (type_size != 0)) {
-			i32 arg = va_arg(args, i32);
-			arg &= (type_size == 8) ? 0x000000ff : 0xffffffff;
-			arg &= (type_size == 16) ? 0x0000ffff : 0xffffffff;
-			char buf[66];
-			w(wcontext, string_from_integer(&buf, arg, 10, true, 0));
-		} else if ((type_flag & string_format_type_char) && (type_size == 0)) {
-			char arg = cast(char, va_arg(args, n32));
-			char buf[2] = {arg, 0};
-			w(wcontext, buf);
-		} else if ((type_flag & string_format_type_uchar) && (type_size == 0)) {
-			char8 arg = va_arg(args, char8);
-			char* bytes = cast(char*, &arg);
-			char buf[5] = {bytes[0], bytes[1], bytes[2], bytes[3], 0};
-			w(wcontext, buf);
-		} else if ((type_flag & string_format_type_str) && (type_size == 0)) {
-			const char* arg = va_arg(args, const char*);
-			w(wcontext, arg);
-		} else {
-			w(wcontext, "?");
-			args_invalid = true;
-		}
-		parsing_view = false;
-	}
-	if (parsing_view) {
-		w(wcontext, "?");
-	}
-}
-//[cf]
-//[of]:[internal] void	string_format_write(const char* s)
-void string_format_write(struct write_context* wcontext, const char* s)
-{
-	while (*s != 0) {
-		i64 char_size = char8_size(string_decode_char8(s));
-		char_size = clamp_bot(char_size, 1);
-		i64 space_left = wcontext->buf_count - wcontext->pos;
-		wcontext->pos = (space_left < char_size) ? -1 : wcontext->pos;
-		i64 copy_size = (wcontext->pos == -1) ? 0 : char_size;
-		mem_copy(wcontext->buf + clamp_bot(wcontext->pos, 0), s, copy_size);
-		wcontext->pos += copy_size;
-		s += char_size;
-	}
-}
-//[cf]
-//[of]:void	string_format(array(char, buf), const char* format, ...)
-void string_format(array(char, buf), const char* format, ...)
-{
-	struct write_context wcontext = (struct write_context){0};
-	wcontext.buf = buf;
-	wcontext.buf_count = buf_count - 1;
-	wcontext.pos = 0;
-	va_list args;
-	va_start(args, format);
-	string_format_args(&wcontext, string_format_write, format, args);
-	buf[wcontext.pos] = 0;
-	va_end(args);
-}
-//[cf]
-
-//[of]:[internal] void	print_flush()
-//[c]Flush the buffer in chunks of valid characters, write invalid bytes as fffd
-void print_flush(struct write_context* wcontext)
-{
-	char* writable_buf = wcontext->buf;
-	writable_buf[wcontext->pos] = 0;
-	wcontext->pos = 0;
-	const char* flush_buf = null;
-	while (*writable_buf != 0) {
-		i64 char_size = char8_size(string_decode_char8(writable_buf));
-		flush_buf = (flush_buf == null) ? writable_buf : flush_buf;
-		*writable_buf = (char_size > 0) ? *writable_buf : 0;
-		writable_buf += (char_size > 0) ? char_size : 1;
-		if (char_size <= 0) {
 			sys_console_write(flush_buf);
-			sys_console_write(u8"\ufffd");
-//[c]			For debugging
-			//sys_console_write("-------------------------------------------");
-			flush_buf = null;
+			flush_buf[0] = 0;
+			f.value += n;
 		}
 	}
-	sys_console_write(flush_buf);
-}
-//[cf]
-//[of]:[internal] void	print_write(const char* s)
-void print_write(struct write_context* wcontext, const char* s)
-{
-	while (*s != 0) {
-		i64 char_size = char8_size(string_decode_char8(s));
-		char_size = clamp_bot(char_size, 1);
-		i64 space_left = wcontext->buf_count - wcontext->pos;
-		if (space_left < char_size) {
-			print_flush(wcontext);
-			space_left = wcontext->buf_count - wcontext->pos;
-			debug_assert(space_left >= char_size); // buffer is too small
+	if (newline) {
+		if (!string_append(flush_buf, count_of(flush_buf), "\n")) {
+			sys_console_write(flush_buf);
+			flush_buf[0] = '\n';
+			flush_buf[1] = 0;
 		}
-		mem_copy(wcontext->buf + wcontext->pos, s, char_size);
-		wcontext->pos += char_size;
-		s += char_size;
+	}
+	if (flush_buf[0] != 0) {
+		sys_console_write(flush_buf);
 	}
 }
 //[cf]
 //[of]:void	print(const char* format, ...)
 void print(const char* format, ...)
 {
-	struct write_context wcontext = (struct write_context){0};
-	char buf[mem_page_size];
-	wcontext.buf = buf;
-	wcontext.buf_count = count_of(buf) - 1;
-	wcontext.pos = 0;
 	va_list args;
 	va_start(args, format);
-	string_format_args(&wcontext, print_write, format, args);
+	print_args(false, format, &args);
 	va_end(args);
-	print_flush(&wcontext);
 }
 //[cf]
 //[of]:void	println(const char* format, ...)
 void println(const char* format, ...)
 {
-	struct write_context wcontext = (struct write_context){0};
-	char buf[mem_page_size];
-	wcontext.buf = buf;
-	wcontext.buf_count = count_of(buf) - 1;
-	wcontext.pos = 0;
 	va_list args;
 	va_start(args, format);
-	string_format_args(&wcontext, print_write, format, args);
+	print_args(true, format, &args);
 	va_end(args);
-	print_write(&wcontext, "\n");
-	print_flush(&wcontext);
 }
 //[cf]
 
@@ -596,15 +662,10 @@ void _hope(bool cond, const char* proc_name, const char* format, ...)
 	if (cond) {
 		return;
 	}
-	struct write_context wcontext = (struct write_context){0};
 	char buf[mem_page_size];
-	wcontext.buf = buf;
-	wcontext.buf_count = count_of(buf) - 1;
-	wcontext.pos = 0;
 	va_list args;
 	va_start(args, format);
-	string_format_args(&wcontext, string_format_write, format, args);
-	buf[wcontext.pos] = 0;
+	string_format_args(array_expand(buf), format, &args);
 	va_end(args);
 	panic(buf);
 }
@@ -627,8 +688,8 @@ void parse_command_line_args(void)
 			escaping = false;
 			continue;
 		}
-		char symbol = args[i];
-		switch (symbol) {
+		char c = args[i];
+		switch (c) {
 			case '"': {
 				if (escaping) {
 					escaping = false;

@@ -113,14 +113,6 @@ void string_lower(char* s)
 	}
 }
 
-void string_copy(array(char, buf), const char* s)
-{
-	i64 s_count = string_count(s);
-	i64 copy_size = clamp_top(s_count, buf_count - 1);
-	mem_copy(buf, s, copy_size);
-	buf[copy_size] = 0;
-}
-
 //[c]Numeric conversions
 char* string_from_i64(char (*buf)[66], i64 x)
 {
@@ -437,7 +429,7 @@ void thread_yield()
 }
 //[cf]
 //[of]:JSON parser
-typedef char8 (*json_peek_proc)(void* context, bool advance);
+typedef uchar (*json_peek_proc)(void* context, bool advance);
 typedef struct {
 	json_peek_proc	peek;
 	void*	context;
@@ -465,7 +457,7 @@ json_value json_value_skip(json_parser* p);
 json_value json_value_next(json_parser* p)
 {
 	json_value out = json_none;
-	for (char8 c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
+	for (uchar c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
 		char symbol = *cast(char*, &c8);
 		bool skip = ((symbol == ' ') | (symbol == '\t') | (symbol == '\n') | (symbol == '\r') | (symbol == ','));
 		out = (((symbol >= 'a') & (symbol <= 'z')) | ((symbol >= 'A') & (symbol <= 'Z'))) ? json_word : out;
@@ -483,7 +475,7 @@ json_value json_value_next(json_parser* p)
 
 void json_word_skip(json_parser* p)
 {
-	for (char8 c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
+	for (uchar c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
 		char symbol = *cast(char*, &c8);
 		if (((symbol >= 'a') & (symbol <= 'z')) | ((symbol >= 'A') & (symbol <= 'Z'))) {
 			continue;
@@ -496,7 +488,7 @@ i64 json_number_extract_i64(json_parser* p)
 {
 	char n[66] = {0};
 	i64 pos = 0;
-	for (char8 c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
+	for (uchar c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
 		char symbol = *cast(char*, &c8);
 		if (((symbol >= '0') & (symbol <= '9')) | (symbol == '-') | (symbol == '.')) {
 			if (pos < cast(i64, count_of(n))) {
@@ -512,7 +504,7 @@ i64 json_number_extract_i64(json_parser* p)
 
 void json_number_skip(json_parser* p)
 {
-	for (char8 c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
+	for (uchar c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
 		char symbol = *cast(char*, &c8);
 		if (((symbol >= '0') & (symbol <= '9')) | (symbol == '-') | (symbol == '.')) {
 			continue;
@@ -524,7 +516,7 @@ void json_number_skip(json_parser* p)
 void json_string_extract(json_parser* p, array(char, buf))
 {
 	buf_count--;
-	for (char8 c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
+	for (uchar c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
 		char symbol = *cast(char*, &c8);
 		if (symbol == '"') {
 			p->peek(p->context, true);
@@ -534,7 +526,7 @@ void json_string_extract(json_parser* p, array(char, buf))
 	i64 pos = 0;
 	bool buf_filled = false;
 	bool escaping = false;
-	for (char8 c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
+	for (uchar c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
 		char symbol = *cast(char*, &c8);
 		if ((symbol == '\\') & !escaping) {
 			escaping = true;
@@ -545,7 +537,7 @@ void json_string_extract(json_parser* p, array(char, buf))
 			break;
 		}
 		escaping = false;
-		i64 char_size = char8_size(c8);
+		i64 char_size = uchar_size(c8);
 		buf_filled = (pos + char_size > buf_count) ? true : buf_filled;
 		i64 copy_size = buf_filled ? 0 : char_size;
 		mem_copy(buf + pos, &c8, copy_size);
@@ -557,7 +549,7 @@ void json_string_extract(json_parser* p, array(char, buf))
 bool json_string_is(json_parser* p, const char* str)
 {
 	i64 str_count = string_count(str);
-	for (char8 c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
+	for (uchar c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
 		char symbol = *cast(char*, &c8);
 		if (symbol == '"') {
 			p->peek(p->context, true);
@@ -567,7 +559,7 @@ bool json_string_is(json_parser* p, const char* str)
 	i64 pos = 0;
 	bool match = true;
 	bool escaping = false;
-	for (char8 c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
+	for (uchar c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
 		char symbol = *cast(char*, &c8);
 		if (symbol == '\\') {
 			if (!escaping) {
@@ -583,7 +575,7 @@ bool json_string_is(json_parser* p, const char* str)
 		}
 		escaping = false;
 		i64 space_left = str_count - pos;
-		i64 char_size = char8_size(c8);
+		i64 char_size = uchar_size(c8);
 		i64 compare_size = clamp_top(char_size, space_left);
 		char* bytes = cast(char*, &c8);
 		for (i64 i = 0; i < compare_size; i++) {
@@ -596,7 +588,7 @@ bool json_string_is(json_parser* p, const char* str)
 
 void json_string_skip(json_parser* p)
 {
-	for (char8 c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
+	for (uchar c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
 		char symbol = *cast(char*, &c8);
 		if (symbol == '"') {
 			p->peek(p->context, true);
@@ -604,7 +596,7 @@ void json_string_skip(json_parser* p)
 		}
 	}
 	bool escaping = false;
-	for (char8 c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
+	for (uchar c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
 		char symbol = *cast(char*, &c8);
 		if (symbol == '\\') {
 			if (!escaping) {
@@ -625,7 +617,7 @@ void json_string_skip(json_parser* p)
 bool json_array_next(json_parser* p)
 {
 	bool match = false;
-	for (char8 c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
+	for (uchar c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
 		char symbol = *cast(char*, &c8);
 		if ((symbol == '[') | (symbol == ' ') | (symbol == '\t') | (symbol == '\n') | (symbol == '\r') | (symbol == ',')) {
 			continue;
@@ -650,7 +642,7 @@ void json_array_skip(json_parser* p)
 bool json_object_next(json_parser* p)
 {
 	bool match = false;
-	for (char8 c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
+	for (uchar c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
 		char symbol = *cast(char*, &c8);
 		if ((symbol == '{') | (symbol == ' ') | (symbol == '\t') | (symbol == '\n') | (symbol == '\r') | (symbol == ',')) {
 			continue;
@@ -670,7 +662,7 @@ bool json_object_next(json_parser* p)
 void json_object_key_extract(json_parser* p, array(char, buf))
 {
 	json_string_extract(p, buf, buf_count);
-	for (char8 c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
+	for (uchar c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
 		char symbol = *cast(char*, &c8);
 		if (symbol == ':') {
 			p->peek(p->context, true);
@@ -682,7 +674,7 @@ void json_object_key_extract(json_parser* p, array(char, buf))
 void json_object_key_skip(json_parser* p)
 {
 	json_string_skip(p);
-	for (char8 c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
+	for (uchar c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
 		char symbol = *cast(char*, &c8);
 		if (symbol == ':') {
 			p->peek(p->context, true);
@@ -696,7 +688,7 @@ bool json_object_key_find(json_parser* p, const char* key)
 	bool match = false;
 	while (json_object_next(p) & !match) {
 		match = json_string_is(p, key);
-		for (char8 c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
+		for (uchar c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
 			char symbol = *cast(char*, &c8);
 			if (symbol == ':') {
 				p->peek(p->context, true);
@@ -742,13 +734,13 @@ json_value json_value_skip(json_parser* p)
 //[of]:JSON file parser
 typedef struct {
 	char	cache[mem_page_size];
-	char8	c8;
+	uchar	c8;
 	i64	cache_size;
 	i64	cache_pos;
 	file_handle	f;
 } json_context;
 
-char8 json_file_peek(void* context, bool advance)
+uchar json_file_peek(void* context, bool advance)
 {
 	json_context* jc = context;
 //[c]	Advance if beginning of the file, or if asked to
@@ -772,8 +764,8 @@ char8 json_file_peek(void* context, bool advance)
 	}
 	const char* str = jc->cache + jc->cache_pos;
 	i64 str_size = jc->cache_size - jc->cache_pos;
-	jc->c8 = string_decode_char8(str);
-	i64 char_size = char8_size(jc->c8);
+	jc->c8 = string_decode_uchar(str);
+	i64 char_size = uchar_size(jc->c8);
 //[c]	Valid char, or invalid char in the middle of a chunk
 	if ((char_size > 0) | (str_size >= 4) | (jc->f.pos == jc->f.size)) {
 		jc->cache_pos += clamp_bot(char_size, 1);
@@ -2040,7 +2032,7 @@ int start(void)
 		WCHAR wtemp_path[MAX_PATH];
 		GetTempPathW(count_of(wtemp_path), wtemp_path);
 		utf16_to_utf8(wtemp_path, -1, temp_path, count_of(temp_path));
-		string_format(array_expand(temp_path), "{s}BuildTools", temp_path);
+		string_append(array_expand(temp_path), "BuildTools");
 	}
 	if (is_subprocess) {
 		folder_create(install_path);
