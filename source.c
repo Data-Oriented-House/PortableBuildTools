@@ -326,108 +326,6 @@ bool folder_next(folder_handle* f, char (*file_name)[MAX_PATH * 3])
 	return (ok);
 }
 //[cf]
-//[of]:Time
-typedef i64 time_duration;
-typedef i64 time_tick;
-
-#define time_nanosecond	cast(time_duration, 1)
-#define time_microsecond	(1000 * time_nanosecond)
-#define time_millisecond	(1000 * time_microsecond)
-#define time_second	(1000 * time_millisecond)
-#define time_minute	(60 * time_second)
-#define time_hour	(60 * time_minute)
-
-void time_sleep(time_duration duration)
-{
-	time_duration d_ms = max(duration / time_millisecond, 1);
-	Sleep(cast(DWORD, d_ms));
-}
-
-time_tick time_tick_now(void)
-{
-	static LARGE_INTEGER qpc_frequency = {0};
-	if (qpc_frequency.QuadPart == 0) {
-		QueryPerformanceFrequency(&qpc_frequency);
-	}
-	LARGE_INTEGER now;
-	QueryPerformanceCounter(&now);
-	i64 q = now.QuadPart / qpc_frequency.QuadPart;
-	i64 r = now.QuadPart % qpc_frequency.QuadPart;
-	i64 num = 1000000000;
-	time_tick out = q * num + r * num / qpc_frequency.QuadPart;
-	return (out);
-}
-//[cf]
-//[of]:Threads
-typedef struct {
-	HANDLE	handle;
-	DWORD	id;
-} thread_handle;
-
-typedef void (*thread_proc)(void);
-
-struct thread_config {
-	thread_proc	p;
-	bool	signal;
-};
-
-typedef enum {
-	thread_priority_normal,
-	thread_priority_low,
-	thread_priority_high,
-	thread_priority_count,
-} thread_priority;
-
-int _thread_priority_map[thread_priority_count] = {
-	[thread_priority_normal] = 0,
-	[thread_priority_low] = -2,
-	[thread_priority_high] = 2,
-};
-
-DWORD _internal_thread_enter(void* lpParameter)
-{
-	struct thread_config* tc = lpParameter;
-	thread_proc p = tc->p;
-	tc->signal = true;
-	p();
-	return (0);
-}
-
-thread_handle thread_run(thread_proc p, thread_priority priority)
-{
-	thread_handle out = (thread_handle){0};
-	struct thread_config tc = (struct thread_config){.p = p, .signal = false};
-	DWORD id;
-	HANDLE handle = CreateThread(null, 0, cast(void*, _internal_thread_enter), &tc, CREATE_SUSPENDED, &id);
-	hope(handle != null, "failed to create a thread");
-	hope(SetThreadPriority(handle, _thread_priority_map[priority]), "failed to set thread priority");
-	hope(ResumeThread(handle) != cast(DWORD, -1), "failed to resume a thread");
-	while (!tc.signal) {
-		cpu_relax();
-	}
-	out.handle = handle;
-	out.id = id;
-	return (out);
-}
-
-void thread_wait(thread_handle* t)
-{
-	WaitForSingleObject(t->handle, INFINITE);
-	CloseHandle(t->handle);
-	*t = (thread_handle){0};
-}
-
-void thread_kill(thread_handle* t)
-{
-	TerminateThread(t->handle, 0);
-	*t = (thread_handle){0};
-}
-
-void thread_yield()
-{
-	SwitchToThread();
-}
-//[cf]
 //[of]:JSON parser
 typedef uchar (*json_peek_proc)(void* context, bool advance);
 typedef struct {
@@ -846,17 +744,17 @@ char release_license_url[L_MAX_URL_LENGTH * 3];
 char preview_manifest_url[L_MAX_URL_LENGTH * 3];
 char preview_license_url[L_MAX_URL_LENGTH * 3];
 
-//[c]NOTE: actual number of versions is 13, not 32
+//[c]NOTE: 13/32
 char release_msvc_versions[32][16];
 i64 release_msvc_versions_count;
-//[c]NOTE: actual number of versions is 14, not 32
+//[c]NOTE: 14/32
 char preview_msvc_versions[32][16];
 i64 preview_msvc_versions_count;
 
-//[c]NOTE: actual number of versions is 6, not 16
+//[c]NOTE: 6/16
 char release_sdk_versions[16][8];
 i64 release_sdk_versions_count;
-//[c]NOTE: actual number of versions is 6, not 16
+//[c]NOTE: 6/16
 char preview_sdk_versions[16][8];
 i64 preview_sdk_versions_count;
 
@@ -1318,7 +1216,7 @@ void install(void)
 		msvc_packages_count++;
 		string_format(array_expand(msvc_packages[msvc_packages_count]), "microsoft.vc.{s}.asan.x64.base", msvc_version);
 		msvc_packages_count++;
-		char sdk_packages[16][128];
+		char sdk_packages[32][128];
 		i64 sdk_packages_count = 0;
 		string_format(array_expand(sdk_packages[sdk_packages_count]), "Windows SDK for Windows Store Apps Tools-x86_en-us.msi");
 		sdk_packages_count++;
@@ -1328,14 +1226,17 @@ void install(void)
 		sdk_packages_count++;
 		string_format(array_expand(sdk_packages[sdk_packages_count]), "Windows SDK for Windows Store Apps Libs-x86_en-us.msi");
 		sdk_packages_count++;
-		string_format(array_expand(sdk_packages[sdk_packages_count]), "Windows SDK OnecoreUap Headers x86-x86_en-us.msi");
-		sdk_packages_count++;
-		string_format(array_expand(sdk_packages[sdk_packages_count]), "Windows SDK Desktop Headers x86-x86_en-us.msi");
-		sdk_packages_count++;
 		string_format(array_expand(sdk_packages[sdk_packages_count]), "Universal CRT Headers Libraries and Sources-x86_en-us.msi");
 		sdk_packages_count++;
 		string_format(array_expand(sdk_packages[sdk_packages_count]), "Windows SDK Desktop Libs {s}-x86_en-us.msi", target_arch);
 		sdk_packages_count++;
+		for (i64 i = 0; i < count_of(targets); i++) {
+			char* t = targets[i];
+			string_format(array_expand(sdk_packages[sdk_packages_count]), "Windows SDK Desktop Headers {s}-x86_en-us.msi", t);
+			sdk_packages_count++;
+			string_format(array_expand(sdk_packages[sdk_packages_count]), "Windows SDK OnecoreUap Headers {s}-x86_en-us.msi", t);
+			sdk_packages_count++;
+		}
 		char sdk_package[32] = {0};
 		json_context jc;
 		char manifest_path[MAX_PATH * 3];
@@ -2026,7 +1927,7 @@ int start(void)
 		panic = message_box_panic;
 	}
 	CoInitializeEx(null, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-	internet_session = InternetOpenW(L"PortableBuildTools/2.0", INTERNET_OPEN_TYPE_PRECONFIG, null, null, 0);
+	internet_session = InternetOpenW(L"PortableBuildTools/2.8", INTERNET_OPEN_TYPE_PRECONFIG, null, null, 0);
 	hope(internet_session != null, "Failed to open internet session");
 	{
 		WCHAR wtemp_path[MAX_PATH];
