@@ -154,58 +154,30 @@ typedef double	f64;
 //[of]:i64	uchar_size_naive(uchar uc)
 i64 uchar_size_naive(uchar uc)
 {
-	static const char sizes[32] = {
-		1, 1, 1, 1, 1, 1, 1, 1,
-		1, 1, 1, 1, 1, 1, 1, 1,
-		0, 0, 0, 0, 0, 0, 0, 0,
-		2, 2, 2, 2, 3, 3, 4, 0
-	};
-	unsigned char c = *cast(unsigned char*, &uc);
-	i64 out = sizes[c >> 3];
-	out = uc ? out : 0;
-	return (out);
+ n8 b = bit_cast(n8, uc);
+ i64 size = 0;
+ size = ((b & 0b11111000) == 0b11110000) ? 4 : size;
+ size = ((b & 0b11110000) == 0b11100000) ? 3 : size;
+ size = ((b & 0b11100000) == 0b11000000) ? 2 : size;
+ size = ((b & 0b10000000) == 0b00000000) ? 1 : size;
+ size = (b == 0) ? 0 : size;
+ return (size);
 }
 //[cf]
 //[of]:i64	uchar_size(uchar uc)
 i64 uchar_size(uchar uc)
 {
-	static const n32 mins[] = {4194304, 0, 128, 2048, 65536};
-	static const i32 shifte[] = {0, 6, 4, 2, 0};
-	static const i32 masks[]  = {0x00, 0x7f, 0x1f, 0x0f, 0x07};
-	static const i32 shiftc[] = {0, 18, 12, 6, 0};
-	char* bytes = cast(char*, &uc);
-	i64 size = uchar_size_naive(uc);
-	n32 c32 = (bytes[0] & masks[size]) << 18;
-	c32 |= (bytes[1] & 0x3f) << 12;
-	c32 |= (bytes[2] & 0x3f) << 6;
-	c32 |= (bytes[3] & 0x3f) << 0;
-	c32 >>= shiftc[size];
-	i32 err = (c32 < mins[size]) << 6; // non-canonical encoding
-	err |= ((c32 >> 11) == 0x1b) << 7;  // surrogate half
-	err |= (c32 > 0x10FFFF) << 8;  // out of range
-	err |= (bytes[1] & 0xc0) >> 2;
-	err |= (bytes[2] & 0xc0) >> 4;
-	err |= (bytes[3]) >> 6;
-	err ^= 0x2a; // incorrect top two bits of each tail byte
-	err >>= shifte[size];
-	size = err ? 0 : size;
-
-//[c]//	TODO: work this one out, much less obtuse
-//[c]	i64 size = uchar_size_naive(uc);
-//[c]	bool valid = false;
-//[c]	valid = (uc <= 0x7f) ? true : valid;
-//[c]	bool is_2byte = ((uc & 0xc0e0) == 0x80c0);
-//[c]	bool is_3byte = ((uc & 0xc0c0f0) == 0x8080e0);
-//[c]	bool is_4byte = ((uc & 0xc0c0c0f8) == 0x808080f0);
-//[c]	valid = ((0x80c2 <= uc) & (uc <= 0xbfdf)) ? is_2byte : valid;
-//[c]//	surrogate half
-//[c]	valid = ((0xeda080 <= uc) & (uc <= 0xedbfbf)) ? false : valid;
-//[c]	valid = ((0x80a0e0 <= uc) & (uc <= 0xbfbfef)) ? is_3byte : valid;
-//[c]	valid = ((0x808090f0 <= uc) & (uc <= 0xbfbf8ff4)) ? is_4byte : valid;
-//[c]	size = valid ? size : 0;
-
-	return (size);
+ n8* bytes = cast(n8*, &uc);
+ i64 size = uchar_size_naive(uc);
+ size = ((size == 2) & ((bytes[1] & 0b11000000) != 0b10000000)) ? 0 : size;
+ size = ((size == 3) & ((bytes[1] & 0b11000000) != 0b10000000)) ? 0 : size;
+ size = ((size == 3) & ((bytes[2] & 0b11000000) != 0b10000000)) ? 0 : size;
+ size = ((size == 4) & ((bytes[1] & 0b11000000) != 0b10000000)) ? 0 : size;
+ size = ((size == 4) & ((bytes[2] & 0b11000000) != 0b10000000)) ? 0 : size;
+ size = ((size == 4) & ((bytes[3] & 0b11000000) != 0b10000000)) ? 0 : size;
+ return (size);
 }
+
 //[cf]
 //[of]:uchar	string_decode_uchar(const char* s)
 uchar string_decode_uchar(const char* s)

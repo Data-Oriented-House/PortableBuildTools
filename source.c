@@ -26,7 +26,7 @@
 
 //[of]:Strings
 bool string_has_char(const char* s, char x)
-{	
+{
 	bool match = false;
 	while (*s != 0) {
 		match = (*s == x) ? true : match;
@@ -651,7 +651,8 @@ uchar json_file_peek(void* context, bool advance)
 	jc->cache_pos = (jc->f.pos == 0) ? 0 : jc->cache_pos;
 //[c]	Chunk end
 	if (jc->cache_pos >= jc->cache_size) {
-		jc->cache_size = file_read(&jc->f, array_expand(jc->cache));
+		jc->cache_size = file_read(&jc->f, string_to_array(jc->cache));
+		jc->cache[count_of(jc->cache)] = 0;
 		jc->cache_pos = 0;
 	}
 //[c]	File end
@@ -1705,7 +1706,7 @@ void install(void)
 		string_format(array_expand(folder_to_remove), "{s}\\Windows Kits\\10\\bin\\{s}\\chpe", install_path, sdkv);
 		folder_delete(folder_to_remove);
 		string_format(array_expand(folder_to_remove), "{s}\\Windows Kits\\10\\Lib\\{s}\\ucrt_enclave", install_path, sdkv);
-		folder_delete(folder_to_remove);	
+		folder_delete(folder_to_remove);
 		{
 			string_format(array_expand(folder_to_remove), "{s}\\Windows Kits\\10\\Lib\\{s}\\ucrt", install_path, sdkv);
 			folder_handle f = folder_open(folder_to_remove);
