@@ -233,7 +233,7 @@ void file_copy(const char* dst_path, const char* src_path)
 	file_handle dst = file_open(dst_path, file_mode_write);
 	char chunk[mem_page_size];
 	while (true) {
-		i64 n = file_read(&src, array_to_buffer(chunk));
+		i64 n = file_read(&src, chunk, countof(chunk));
 		if (n == 0) {
 			break;
 		}
@@ -1003,13 +1003,13 @@ void parse_vsmanifest(const char* path, bool preview)
 			continue;
 		}
 		char id[64];
-		json_string_extract(&p, array_to_buffer(id));
+		json_string_extract(&p, id, countof(id));
 		if (string_is(id, preview ? "Microsoft.VisualStudio.Manifests.VisualStudioPreview" : "Microsoft.VisualStudio.Manifests.VisualStudio")) {
 			json_file_context_restore(&jc, obj_state);
 			hope(json_object_key_find(&p, "payloads"), "payloads not found");
 			json_array_next(&p);
 			hope(json_object_key_find(&p, "url"), "manifest url not found");
-			json_string_extract(&p, array_to_buffer(manifest_url));
+			json_string_extract(&p, manifest_url, countof(manifest_url));
 			json_object_skip(&p);
 			json_array_next(&p);
 		}
@@ -1020,11 +1020,11 @@ void parse_vsmanifest(const char* path, bool preview)
 				json_context res_state = jc;
 				hope(json_object_key_find(&p, "language"), "license language not found");
 				char language[8];
-				json_string_extract(&p, array_to_buffer(language));
+				json_string_extract(&p, language, countof(language));
 				if (string_is(language, "en-us")) {
 					json_file_context_restore(&jc, res_state);
 					hope(json_object_key_find(&p, "license"), "license url not found");
-					json_string_extract(&p, array_to_buffer(license_url));
+					json_string_extract(&p, license_url, countof(license_url));
 					json_object_skip(&p);
 					break;
 				}
@@ -1052,7 +1052,7 @@ void parse_manifest(const char* path, bool preview)
 	while (json_array_next(&p)) {
 		hope(json_object_key_find(&p, "id"), "id not found");
 		char id[64];
-		json_string_extract(&p, array_to_buffer(id));
+		json_string_extract(&p, id, countof(id));
 		char id_lower[countof(id)];
 		memcpy(id_lower, id, sizeof(id));
 		string_lower(id_lower);
@@ -1064,11 +1064,11 @@ void parse_manifest(const char* path, bool preview)
 		is_sdk_version = string_trim_start(id_lower, "microsoft.visualstudio.component.windows11sdk.") ? true : is_sdk_version;
 		bool is_digit = string_has_only(id_lower, string_to_buffer(".0123456789"));
 		if (is_msvc_version & is_digit) {
-			string_copy(array_to_buffer(msvc_versions[msvc_versions_count]), id_lower);
+			string_copy(msvc_versions[msvc_versions_count], countof(msvc_versions[msvc_versions_count]), id_lower);
 			msvc_versions_count++;
 		}
 		if (is_sdk_version & is_digit) {
-			string_copy(array_to_buffer(sdk_versions[sdk_versions_count]), id_lower);
+			string_copy(sdk_versions[sdk_versions_count], countof(sdk_versions[sdk_versions_count]), id_lower);
 			sdk_versions_count++;
 		}
 		json_object_skip(&p);
@@ -1232,7 +1232,7 @@ void install(void)
 			if (is_sdk & string_ends_with(id_lower, sdk_version)) {
 				hope(json_object_key_find(&p, "dependencies"), "dependencies not found");
 				hope(json_object_next(&p), "dependencies is empty");
-				json_object_key_extract(&p, array_to_buffer(sdk_package));
+				json_object_key_extract(&p, sdk_package, countof(sdk_package));
 				break;
 			}
 			json_object_skip(&p);
@@ -1246,7 +1246,7 @@ void install(void)
 		while (json_array_next(&p)) {
 			hope(json_object_key_find(&p, "id"), "id not found");
 			char id[64];
-			json_string_extract(&p, array_to_buffer(id));
+			json_string_extract(&p, id, countof(id));
 			char id_lower[countof(id)];
 			memcpy(id_lower, id, sizeof(id));
 			string_lower(id_lower);
@@ -1264,7 +1264,7 @@ void install(void)
 			while (json_array_next(&p)) {
 				hope(json_object_key_find(&p, "id"), "id not found");
 				char id[64];
-				json_string_extract(&p, array_to_buffer(id));
+				json_string_extract(&p, id, countof(id));
 				char id_lower[countof(id)];
 				memcpy(id_lower, id, sizeof(id));
 				string_lower(id_lower);
@@ -1273,7 +1273,7 @@ void install(void)
 					hope(json_object_key_find(&p, "dependencies"), "dependencies not found");
 					while (json_object_next(&p)) {
 						char redist_package[128];
-						json_object_key_extract(&p, array_to_buffer(redist_package));
+						json_object_key_extract(&p, redist_package, countof(redist_package));
 						if (string_ends_with(redist_package, ".base")) {
 							string_lower(redist_package);
 							string_format(msvc_packages[msvc_packages_count], countof(msvc_packages[msvc_packages_count]), redist_package);
@@ -1773,6 +1773,7 @@ void install(void)
 			install_path, "\\Windows Kits\\10\\bin\\", sdkv, "\\", target_arch, "\\ucrt\n",
 		);
 		env_set(location, subkey, L"BUILD_TOOLS_BIN", buf);
+
 		WCHAR wpath[MAX_ENV_LEN];
 		char path[countof(wpath) * 3];
 		DWORD wpath_size = sizeof(wpath);
@@ -1797,7 +1798,7 @@ void install(void)
 			path[i] = (path[i] == 0) ? ';' : path[i];
 		}
 //[c]		Add %BUILD_TOOLS_BIN% if not present
-		string_format(path, countof(path), path, ";", has_build_tools_bin ? "" : "%BUILD_TOOLS_BIN%");
+		string_append(path, countof(path), has_build_tools_bin ? "" : ";%BUILD_TOOLS_BIN%");
 		string_trim_end(path, ";");
 		string_trim_start(path, ";");
 		{
@@ -1853,7 +1854,7 @@ void start(void)
 			}
 		} else if (string_starts_with(arg, "path=")) {
 			string_trim_start(arg, "path=");
-			string_copy(array_to_buffer(install_path), arg);
+			string_copy(install_path, countof(install_path), arg);
 			string_trim_end(install_path, "\"");
 			string_trim_start(install_path, "\"");
 		} else {
@@ -1882,7 +1883,7 @@ void start(void)
 		WCHAR wtemp_path[MAX_PATH];
 		GetTempPathW(countof(wtemp_path), wtemp_path);
 		utf16_to_utf8(wtemp_path, -1, temp_path, countof(temp_path));
-		string_append(array_to_buffer(temp_path), "BuildTools");
+		string_append(temp_path, countof(temp_path), "BuildTools");
 	}
 	if (is_subprocess) {
 		folder_create(install_path);
@@ -2004,7 +2005,7 @@ void start(void)
 		} else {
 			echoln("Do you accept the license agreement? [Y/n] ", is_preview ? preview_license_url : release_license_url);
 			char answer[4];
-			console_read(array_to_buffer(answer));
+			console_read(answer, countof(answer));
 			string_lower(answer);
 			install_start = string_is(answer, "") | string_is(answer, "y") | string_is(answer, "yes");
 		}
