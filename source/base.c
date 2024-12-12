@@ -34,10 +34,9 @@ int memcmp(const void* lhs, const void* rhs, size_t count)
  const unsigned char* p2 = (const unsigned char*)rhs;
  for (size_t i = 0; i < count; ++i)
  {
-  if (p1[i] != p2[i])
-  {
-   return (p1[i] - p2[i]);
-  }
+  int d = p1[i] - p2[i];
+  if (d != 0)
+   return (d);
  }
  return (0);
 }
@@ -107,11 +106,9 @@ typedef double f64;
  max(x, y)
 #define clamp(x, low, high) \
  clamp_top(clamp_bot(x, low), high)
-#define buffer(type, name) \
+#define slice(type, name) \
  type* name, nat name##_count
-#define array_to_buffer(a) \
- a, countof(a)
-#define string_to_buffer(s) \
+#define string_slice(s) \
  s, countof(s) - 1
 #define vcall(v, c, ...) \
  (v)->c(v, ##__VA_ARGS__)
@@ -130,13 +127,6 @@ typedef double f64;
   { \
    do_once = true; \
    s; \
-  } \
- }
-#define debug_assert(cond) \
- { \
-  if (!(cond)) \
-  { \
-   trap(); \
   } \
  }
 
@@ -180,8 +170,7 @@ nat time_tick(void)
  QueryPerformanceCounter(&t);
  nat q = t.QuadPart / f.QuadPart;
  nat r = t.QuadPart % f.QuadPart;
- nat num = 1e9;
- nat out = q * num + r * num / f.QuadPart;
+ nat out = q * time_second + r * time_second / f.QuadPart;
  return (out);
 }
 
@@ -261,7 +250,9 @@ nat string_count(const char* s)
  return (count);
 }
 
-nat string_copy(buffer(char, buf), const char* s)
+#define string_copy(b, s) \
+ _string_copy(b, countof(b), s)
+nat _string_copy(slice(char, buf), const char* s)
 {
  nat count = 0;
  while (*s != 0)
@@ -278,7 +269,9 @@ nat string_copy(buffer(char, buf), const char* s)
  return (count);
 }
 
-nat string_append(buffer(char, buf), const char* s)
+#define string_append(b, s) \
+ _string_append(b, countof(b), s)
+nat _string_append(slice(char, buf), const char* s)
 {
  nat prev_count = string_count(buf);
  nat count = prev_count;
@@ -296,20 +289,22 @@ nat string_append(buffer(char, buf), const char* s)
  return (count - prev_count);
 }
 
-char* _string_format(buffer(char, buf), buffer(const char*, strings))
+#define string_format(b, ...) \
+ _string_format(b, countof(b), __VA_ARGS__)
+#define _string_format(b, c, ...) \
+ __string_format(b, c, (const char*[]){__VA_ARGS__}, sizeof((const char*[]){__VA_ARGS__}) / sizeof(const char*))
+char* __string_format(slice(char, buf), slice(const char*, strings))
 {
  buf[0] = 0;
  for (nat i = 0; i < strings_count; i++)
  {
   const char* s = strings[i];
-  nat n = string_append(buf, buf_count, s);
+  nat n = _string_append(buf, buf_count, s);
   if (n < string_count(s))
    break;
  }
  return (&buf[0]);
 }
-#define string_format(b, c, ...) \
- _string_format(b, c, (const char*[]){__VA_ARGS__}, sizeof((const char*[]){__VA_ARGS__}) / sizeof(const char*))
 
 // String conversion
 
@@ -333,9 +328,8 @@ char* uchar_to_string(char (*buf)[5], uchar uc)
 char* integer_to_string(char (*buf)[66], n64 x, nat base, bool is_signed, nat leading_zeroes)
 {
  static const char* digits = "0123456789abcdefghijklmnopqrstuvwxyz";
- debug_assert(base <= 36);
- debug_assert(leading_zeroes <= 64);
- leading_zeroes = clamp_bot(leading_zeroes, 1);
+ base = clamp_top(base, 36);
+ leading_zeroes = clamp(leading_zeroes, 1, 64);
  bool is_neg = (is_signed & (cast(i64, x) < 0));
  x = is_neg ? -(cast(i64, x)) : x;
  char* numbers = *buf;
@@ -375,16 +369,27 @@ char* integer_to_string(char (*buf)[66], n64 x, nat base, bool is_signed, nat le
 
 // Console
 
-LPWSTR* _wargs;
-int args_count;
-bool is_cli;
+#define MAX_CMDLINE_LEN_UTF8 (32767 * 3)
 
-// NOTE: the function is not thread-safe, and argument memory gets overwritten on every call
-char* console_get_arg(nat i)
+bool is_cli;
+nat args_count;
+const char* args[MAX_CMDLINE_LEN_UTF8];
+
+void _console_parse_arguments(void)
 {
- static char arg[(32767 * 3) + 1];
- WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, _wargs[i], -1, arg, countof(arg), null, null);
- return (arg);
+ static char args_global[MAX_CMDLINE_LEN_UTF8];
+ nat args_position = 0;
+ int wargs_count = 0;
+ LPWSTR* wargs = CommandLineToArgvW(GetCommandLineW(), &wargs_count);
+ for (int i = 0; i < wargs_count; i++)
+ {
+  char arg[MAX_CMDLINE_LEN_UTF8];
+  int arg_count = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wargs[i], -1, arg, countof(arg), null, null);
+  memcpy(&args_global[args_position], arg, arg_count);
+  args[args_count++] = &args_global[args_position];
+  args_position += arg_count;
+ }
+ LocalFree(wargs);
 }
 
 void console_toggle(bool show)
@@ -395,7 +400,9 @@ void console_toggle(bool show)
  ShowWindow(console, show ? SW_SHOW : SW_HIDE);
 }
 
-nat console_read(buffer(char, buf))
+#define console_read(b) \
+ _console_read(b, countof(b))
+nat _console_read(slice(char, buf))
 {
  nat count = 0;
  WCHAR codepoint[2] = {0};
@@ -415,14 +422,13 @@ nat console_read(buffer(char, buf))
   codepoint[1] = surrogate ? wchar : codepoint[1];
   uchar uc = 0;
   int size = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, codepoint, codepoint_size, cast(LPSTR, &uc), sizeof(uc), null, null);
-  debug_assert(size > 0); // unicode conversion bug
   if (buf_count - count < size + 1)
    break;
   memcpy(&buf[count], &uc, size);
   count += size;
   codepoint[0] = 0;
  }
- count -= (count > 0) & (buf[count - 1] == '\r') ? 1 : 0;
+ count -= ((count > 0) & (buf[count - 1] == '\r')) ? 1 : 0;
  buf[count] = 0;
  return (count);
 }
@@ -437,7 +443,11 @@ void console_write_error(const char* str)
  WriteFile(GetStdHandle(STD_ERROR_HANDLE), str, string_count(str), null, null);
 }
 
-void _echo(buffer(const char*, strings))
+#define echo(...) \
+ _echo((const char*[]){__VA_ARGS__}, sizeof((const char*[]){__VA_ARGS__}) / sizeof(const char*))
+#define echoln(...) \
+ _echo((const char*[]){__VA_ARGS__, "\n"}, sizeof((const char*[]){__VA_ARGS__, "\n"}) / sizeof(const char*))
+void _echo(slice(const char*, strings))
 {
  char flush_buf[mem_page_size] = {0};
  for (nat i = 0; i < strings_count; i++)
@@ -445,7 +455,7 @@ void _echo(buffer(const char*, strings))
   const char* s = strings[i];
   while (true)
   {
-   nat n = string_append(flush_buf, countof(flush_buf), s);
+   nat n = string_append(flush_buf, s);
    if (n == string_count(s))
     break;
    console_write(flush_buf);
@@ -457,14 +467,13 @@ void _echo(buffer(const char*, strings))
   console_write(flush_buf);
 }
 
-#define echo(...) \
- _echo((const char*[]){__VA_ARGS__}, sizeof((const char*[]){__VA_ARGS__}) / sizeof(const char*))
-#define echoln(...) \
- _echo((const char*[]){__VA_ARGS__, "\n"}, sizeof((const char*[]){__VA_ARGS__, "\n"}) / sizeof(const char*))
+// Assertion
 
-// Assertions
-
-void _hope(bool cond, const char* proc_name, buffer(const char*, strings))
+#define hopeless(...) \
+ hope(false, ##__VA_ARGS__)
+#define hope(c, ...) \
+ _hope(c, __func__, (const char*[]){__VA_ARGS__}, sizeof((const char*[]){__VA_ARGS__}) / sizeof(const char*))
+void _hope(bool cond, const char* proc_name, slice(const char*, strings))
 {
  if (cond)
   return;
@@ -475,7 +484,7 @@ void _hope(bool cond, const char* proc_name, buffer(const char*, strings))
   const char* s = strings[i];
   while (true)
   {
-   nat n = string_append(flush_buf, countof(flush_buf), s);
+   nat n = string_append(flush_buf, s);
    if (n == string_count(s))
     break;
    console_write_error(flush_buf);
@@ -487,11 +496,6 @@ void _hope(bool cond, const char* proc_name, buffer(const char*, strings))
   console_write_error(flush_buf);
  trap();
 }
-
-#define hope(c, ...) \
- _hope(c, __func__, (const char*[]){__VA_ARGS__}, sizeof((const char*[]){__VA_ARGS__}) / sizeof(const char*))
-#define hopeless(...) \
- hope(false, ##__VA_ARGS__)
 
 // Embed
 
@@ -524,7 +528,7 @@ void exit(int status)
 void enter(void)
 {
  is_cli = (GetConsoleProcessList(&(DWORD){}, 1) >= 2);
- _wargs = CommandLineToArgvW(GetCommandLineW(), &args_count);
+ _console_parse_arguments();
  SetConsoleOutputCP(65001);
  start();
  exit(0);

@@ -34,7 +34,7 @@ bool string_has_char(const char* s, char x)
 }
 
 //[c]Check if the string includes any of the bytes in the buffer
-bool string_has_any(const char* s, buffer(const char, buf))
+bool string_has_any(const char* s, slice(const char, buf))
 {
 	i64 s_count = string_count(s);
 	bool match = false;
@@ -47,7 +47,7 @@ bool string_has_any(const char* s, buffer(const char, buf))
 }
 
 //[c]Check if the string includes only the bytes in the buffer, and no other bytes
-bool string_has_only(const char* s, buffer(const char, buf))
+bool string_has_only(const char* s, slice(const char, buf))
 {
 	i64 s_count = string_count(s);
 	bool match = true;
@@ -201,7 +201,7 @@ void file_close(file_handle* f)
 	CloseHandle(f->handle);
 }
 
-i64 file_read(file_handle* f, buffer(char, buf))
+i64 file_read(file_handle* f, char* buf, nat buf_count)
 {
 	DWORD n = 0;
 	ReadFile(f->handle, buf, cast(DWORD, buf_count), &n, null);
@@ -209,7 +209,7 @@ i64 file_read(file_handle* f, buffer(char, buf))
 	return (n);
 }
 
-void file_write(file_handle* f, buffer(const char, data))
+void file_write(file_handle* f, const char* data, nat data_count)
 {
 	DWORD n = 0;
 	WriteFile(f->handle, data, cast(DWORD, data_count), &n, null);
@@ -288,7 +288,7 @@ folder_handle folder_open(const char* path)
 {
 	WCHAR wpath[MAX_PATH];
 	char path_fixed[MAX_PATH * 3];
-	string_format(path_fixed, countof(path_fixed), path, "\\*");
+	string_format(path_fixed, path, "\\*");
 	utf8_to_utf16(path_fixed, -1, wpath, MAX_PATH);
 	folder_handle f = (folder_handle){0};
 //[c]	Skip .
@@ -399,7 +399,9 @@ void json_number_skip(json_parser* p)
 	}
 }
 
-void json_string_extract(json_parser* p, buffer(char, buf))
+#define json_string_extract(p, b) \
+ _json_string_extract(p, b, countof(b))
+void _json_string_extract(json_parser* p, slice(char, buf))
 {
 	buf_count--;
 	for (uchar c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
@@ -545,9 +547,11 @@ bool json_object_next(json_parser* p)
 	return (match);
 }
 
-void json_object_key_extract(json_parser* p, buffer(char, buf))
+#define json_object_key_extract(p, b) \
+ _json_object_key_extract(p, b, countof(b))
+void _json_object_key_extract(json_parser* p, slice(char, buf))
 {
-	json_string_extract(p, buf, buf_count);
+	_json_string_extract(p, buf, buf_count);
 	for (uchar c8 = p->peek(p->context, false); c8 != 0; c8 = p->peek(p->context, true)) {
 		char symbol = *cast(char*, &c8);
 		if (symbol == ':') {
@@ -639,7 +643,7 @@ uchar json_file_peek(void* context, bool advance)
 	jc->cache_pos = (jc->f.pos == 0) ? 0 : jc->cache_pos;
 //[c]	Chunk end
 	if (jc->cache_pos >= jc->cache_size) {
-		jc->cache_size = file_read(&jc->f, string_to_buffer(jc->cache));
+		jc->cache_size = file_read(&jc->f, string_slice(jc->cache));
 		jc->cache[countof(jc->cache)] = 0;
 		jc->cache_pos = 0;
 	}
@@ -723,7 +727,7 @@ char msvc_version[32];
 char sdk_version[16];
 char target_arch[16] = "x64";
 char host_arch[16] = "x64";
-char install_path[MAX_PATH * 3] = "C:\\BuildTools";
+char install_path[(MAX_PATH * 3) + 8] = "C:\\BuildTools"; // +8 extra padding just in case
 bool license_accepted;
 bool is_admin;
 char temp_path[MAX_PATH * 3];
@@ -779,7 +783,7 @@ void refill_gui(HWND dlg)
 			SendMessageW(item, CB_ADDSTRING, 0, cast(LPARAM, wver));
 		}
 		SendMessageW(item, CB_SETCURSEL, 0, 0);
-		string_copy(msvc_version, countof(msvc_version), msvc_versions[msvc_versions_count - 1]);
+		string_copy(msvc_version, msvc_versions[msvc_versions_count - 1]);
 	}
 	{
 		char (*sdk_versions)[8] = is_preview ? preview_sdk_versions : release_sdk_versions;
@@ -792,12 +796,12 @@ void refill_gui(HWND dlg)
 			SendMessageW(item, CB_ADDSTRING, 0, cast(LPARAM, wver));
 		}
 		SendMessageW(item, CB_SETCURSEL, 0, 0);
-		string_copy(sdk_version, countof(sdk_version), sdk_versions[sdk_versions_count - 1]);
+		string_copy(sdk_version, sdk_versions[sdk_versions_count - 1]);
 	}
 	{
 		char* license_url = is_preview ? preview_license_url : release_license_url;
 		char link_url[64 + L_MAX_URL_LENGTH * 3] = {0};
-		string_format(link_url, countof(link_url), "I accept the <a href=\"", license_url, "\">License Agreement</a>");
+		string_format(link_url, "I accept the <a href=\"", license_url, "\">License Agreement</a>");
 		WCHAR wlink[64 + L_MAX_URL_LENGTH];
 		utf8_to_utf16(link_url, -1, wlink, countof(wlink));
 		SetDlgItemTextW(dlg, ID_SYSLINK_LICENSE, wlink);
@@ -907,19 +911,19 @@ BOOL WINAPI window_proc(HWND dlg, UINT message, WPARAM wparam, LPARAM lparam)
 				} break;
 				case ID_COMBO_MSVC: {
 					i64 index = SendMessageW(GetDlgItem(dlg, ID_COMBO_MSVC), CB_GETCURSEL, 0, 0);
-					string_copy(msvc_version, countof(msvc_version), is_preview ? preview_msvc_versions[preview_msvc_versions_count - index - 1] : release_msvc_versions[release_msvc_versions_count - index - 1]);
+					string_copy(msvc_version, is_preview ? preview_msvc_versions[preview_msvc_versions_count - index - 1] : release_msvc_versions[release_msvc_versions_count - index - 1]);
 				} break;
 				case ID_COMBO_SDK: {
 					i64 index = SendMessageW(GetDlgItem(dlg, ID_COMBO_SDK), CB_GETCURSEL, 0, 0);
-					string_copy(sdk_version, countof(sdk_version), is_preview ? preview_sdk_versions[preview_sdk_versions_count - index - 1] : release_sdk_versions[release_sdk_versions_count - index - 1]);
+					string_copy(sdk_version, is_preview ? preview_sdk_versions[preview_sdk_versions_count - index - 1] : release_sdk_versions[release_sdk_versions_count - index - 1]);
 				} break;
 				case ID_COMBO_TARGET: {
 					i64 index = SendMessageW(GetDlgItem(dlg, ID_COMBO_TARGET), CB_GETCURSEL, 0, 0);
-					string_copy(target_arch, countof(target_arch), targets[index]);
+					string_copy(target_arch, targets[index]);
 				} break;
 				case ID_COMBO_HOST: {
 					i64 index = SendMessageW(GetDlgItem(dlg, ID_COMBO_HOST), CB_GETCURSEL, 0, 0);
-					string_copy(host_arch, countof(host_arch), hosts[index]);
+					string_copy(host_arch, hosts[index]);
 				} break;
 				case ID_EDIT_PATH: {
 					if (wparam_words[1] == EN_CHANGE) {
@@ -1003,13 +1007,13 @@ void parse_vsmanifest(const char* path, bool preview)
 			continue;
 		}
 		char id[64];
-		json_string_extract(&p, id, countof(id));
+		json_string_extract(&p, id);
 		if (string_is(id, preview ? "Microsoft.VisualStudio.Manifests.VisualStudioPreview" : "Microsoft.VisualStudio.Manifests.VisualStudio")) {
 			json_file_context_restore(&jc, obj_state);
 			hope(json_object_key_find(&p, "payloads"), "payloads not found");
 			json_array_next(&p);
 			hope(json_object_key_find(&p, "url"), "manifest url not found");
-			json_string_extract(&p, manifest_url, countof(manifest_url));
+			json_string_extract(&p, manifest_url);
 			json_object_skip(&p);
 			json_array_next(&p);
 		}
@@ -1020,11 +1024,11 @@ void parse_vsmanifest(const char* path, bool preview)
 				json_context res_state = jc;
 				hope(json_object_key_find(&p, "language"), "license language not found");
 				char language[8];
-				json_string_extract(&p, language, countof(language));
+				json_string_extract(&p, language);
 				if (string_is(language, "en-us")) {
 					json_file_context_restore(&jc, res_state);
 					hope(json_object_key_find(&p, "license"), "license url not found");
-					json_string_extract(&p, license_url, countof(license_url));
+					json_string_extract(&p, license_url);
 					json_object_skip(&p);
 					break;
 				}
@@ -1052,7 +1056,7 @@ void parse_manifest(const char* path, bool preview)
 	while (json_array_next(&p)) {
 		hope(json_object_key_find(&p, "id"), "id not found");
 		char id[64];
-		json_string_extract(&p, id, countof(id));
+		json_string_extract(&p, id);
 		char id_lower[countof(id)];
 		memcpy(id_lower, id, sizeof(id));
 		string_lower(id_lower);
@@ -1062,13 +1066,13 @@ void parse_manifest(const char* path, bool preview)
 		bool is_sdk_version = false;
 		is_sdk_version = string_trim_start(id_lower, "microsoft.visualstudio.component.windows10sdk.") ? true : is_sdk_version;
 		is_sdk_version = string_trim_start(id_lower, "microsoft.visualstudio.component.windows11sdk.") ? true : is_sdk_version;
-		bool is_digit = string_has_only(id_lower, string_to_buffer(".0123456789"));
+		bool is_digit = string_has_only(id_lower, string_slice(".0123456789"));
 		if (is_msvc_version & is_digit) {
-			string_copy(msvc_versions[msvc_versions_count], countof(msvc_versions[msvc_versions_count]), id_lower);
+			string_copy(msvc_versions[msvc_versions_count], id_lower);
 			msvc_versions_count++;
 		}
 		if (is_sdk_version & is_digit) {
-			string_copy(sdk_versions[sdk_versions_count], countof(sdk_versions[sdk_versions_count]), id_lower);
+			string_copy(sdk_versions[sdk_versions_count], id_lower);
 			sdk_versions_count++;
 		}
 		json_object_skip(&p);
@@ -1144,10 +1148,10 @@ void extract_payload_info(json_context* jc, json_parser* p, char (*file_name)[MA
 //[c]	TODO: extract and validate sha256 (given sha256 doesn't seem to correspond to the file's actual sha256)
 	json_context payload_state = *jc;
 	hope(json_object_key_find(p, "fileName"), "fileName not found");
-	json_string_extract(p, array_to_buffer(*file_name));
+	json_string_extract(p, *file_name);
 	json_file_context_restore(jc, payload_state);
 	hope(json_object_key_find(p, "url"), "url not found");
-	json_string_extract(p, array_to_buffer(*url));
+	json_string_extract(p, *url);
 	json_file_context_restore(jc, payload_state);
 }
 
@@ -1156,64 +1160,64 @@ void install(void)
 //[c]	Create temporary folders
 	char msvc_path[MAX_PATH * 3];
 	char sdk_path[MAX_PATH * 3];
-	string_format(msvc_path, countof(msvc_path), temp_path, "\\msvc");
-	string_format(sdk_path, countof(sdk_path), temp_path, "\\sdk");
+	string_format(msvc_path, temp_path, "\\msvc");
+	string_format(sdk_path, temp_path, "\\sdk");
 	folder_create(msvc_path);
 	folder_create(sdk_path);
 	{
 		char msvc_packages[32][128];
 		i64 msvc_packages_count = 0;
-		string_format(msvc_packages[msvc_packages_count], countof(msvc_packages[msvc_packages_count]), "microsoft.visualcpp.dia.sdk");
+		string_format(msvc_packages[msvc_packages_count], "microsoft.visualcpp.dia.sdk");
 		msvc_packages_count++;
-		string_format(msvc_packages[msvc_packages_count], countof(msvc_packages[msvc_packages_count]), "microsoft.vc.", msvc_version, ".crt.headers.base");
+		string_format(msvc_packages[msvc_packages_count], "microsoft.vc.", msvc_version, ".crt.headers.base");
 		msvc_packages_count++;
-		string_format(msvc_packages[msvc_packages_count], countof(msvc_packages[msvc_packages_count]), "microsoft.vc.", msvc_version, ".crt.source.base");
+		string_format(msvc_packages[msvc_packages_count], "microsoft.vc.", msvc_version, ".crt.source.base");
 		msvc_packages_count++;
-		string_format(msvc_packages[msvc_packages_count], countof(msvc_packages[msvc_packages_count]), "microsoft.vc.", msvc_version, ".asan.headers.base");
+		string_format(msvc_packages[msvc_packages_count], "microsoft.vc.", msvc_version, ".asan.headers.base");
 		msvc_packages_count++;
-		string_format(msvc_packages[msvc_packages_count], countof(msvc_packages[msvc_packages_count]), "microsoft.vc.", msvc_version, ".pgo.headers.base");
+		string_format(msvc_packages[msvc_packages_count], "microsoft.vc.", msvc_version, ".pgo.headers.base");
 		msvc_packages_count++;
-		string_format(msvc_packages[msvc_packages_count], countof(msvc_packages[msvc_packages_count]), "microsoft.vc.", msvc_version, ".tools.host", host_arch, ".target", target_arch, ".base");
+		string_format(msvc_packages[msvc_packages_count], "microsoft.vc.", msvc_version, ".tools.host", host_arch, ".target", target_arch, ".base");
 		msvc_packages_count++;
-		string_format(msvc_packages[msvc_packages_count], countof(msvc_packages[msvc_packages_count]), "microsoft.vc.", msvc_version, ".tools.host", host_arch, ".target", target_arch, ".res.base");
+		string_format(msvc_packages[msvc_packages_count], "microsoft.vc.", msvc_version, ".tools.host", host_arch, ".target", target_arch, ".res.base");
 		msvc_packages_count++;
-		string_format(msvc_packages[msvc_packages_count], countof(msvc_packages[msvc_packages_count]), "microsoft.vc.", msvc_version, ".crt.", target_arch, ".desktop.base");
+		string_format(msvc_packages[msvc_packages_count], "microsoft.vc.", msvc_version, ".crt.", target_arch, ".desktop.base");
 		msvc_packages_count++;
-		string_format(msvc_packages[msvc_packages_count], countof(msvc_packages[msvc_packages_count]), "microsoft.vc.", msvc_version, ".crt.", target_arch, ".store.base");
+		string_format(msvc_packages[msvc_packages_count], "microsoft.vc.", msvc_version, ".crt.", target_arch, ".store.base");
 		msvc_packages_count++;
-		string_format(msvc_packages[msvc_packages_count], countof(msvc_packages[msvc_packages_count]), "microsoft.vc.", msvc_version, ".premium.tools.host", host_arch, ".target", target_arch, ".base");
+		string_format(msvc_packages[msvc_packages_count], "microsoft.vc.", msvc_version, ".premium.tools.host", host_arch, ".target", target_arch, ".base");
 		msvc_packages_count++;
-		string_format(msvc_packages[msvc_packages_count], countof(msvc_packages[msvc_packages_count]), "microsoft.vc.", msvc_version, ".pgo.", target_arch, ".base");
+		string_format(msvc_packages[msvc_packages_count], "microsoft.vc.", msvc_version, ".pgo.", target_arch, ".base");
 		msvc_packages_count++;
-		string_format(msvc_packages[msvc_packages_count], countof(msvc_packages[msvc_packages_count]), "microsoft.vc.", msvc_version, ".asan.x86.base");
+		string_format(msvc_packages[msvc_packages_count], "microsoft.vc.", msvc_version, ".asan.x86.base");
 		msvc_packages_count++;
-		string_format(msvc_packages[msvc_packages_count], countof(msvc_packages[msvc_packages_count]), "microsoft.vc.", msvc_version, ".asan.x64.base");
+		string_format(msvc_packages[msvc_packages_count], "microsoft.vc.", msvc_version, ".asan.x64.base");
 		msvc_packages_count++;
 		char sdk_packages[32][128];
 		i64 sdk_packages_count = 0;
-		string_format(sdk_packages[sdk_packages_count], countof(sdk_packages[sdk_packages_count]), "Windows SDK for Windows Store Apps Tools-x86_en-us.msi");
+		string_format(sdk_packages[sdk_packages_count], "Windows SDK for Windows Store Apps Tools-x86_en-us.msi");
 		sdk_packages_count++;
-		string_format(sdk_packages[sdk_packages_count], countof(sdk_packages[sdk_packages_count]), "Windows SDK for Windows Store Apps Headers-x86_en-us.msi");
+		string_format(sdk_packages[sdk_packages_count], "Windows SDK for Windows Store Apps Headers-x86_en-us.msi");
 		sdk_packages_count++;
-		string_format(sdk_packages[sdk_packages_count], countof(sdk_packages[sdk_packages_count]), "Windows SDK for Windows Store Apps Headers OnecoreUap-x86_en-us.msi");
+		string_format(sdk_packages[sdk_packages_count], "Windows SDK for Windows Store Apps Headers OnecoreUap-x86_en-us.msi");
 		sdk_packages_count++;
-		string_format(sdk_packages[sdk_packages_count], countof(sdk_packages[sdk_packages_count]), "Windows SDK for Windows Store Apps Libs-x86_en-us.msi");
+		string_format(sdk_packages[sdk_packages_count], "Windows SDK for Windows Store Apps Libs-x86_en-us.msi");
 		sdk_packages_count++;
-		string_format(sdk_packages[sdk_packages_count], countof(sdk_packages[sdk_packages_count]), "Universal CRT Headers Libraries and Sources-x86_en-us.msi");
+		string_format(sdk_packages[sdk_packages_count], "Universal CRT Headers Libraries and Sources-x86_en-us.msi");
 		sdk_packages_count++;
-		string_format(sdk_packages[sdk_packages_count], countof(sdk_packages[sdk_packages_count]), "Windows SDK Desktop Libs ", target_arch, "-x86_en-us.msi");
+		string_format(sdk_packages[sdk_packages_count], "Windows SDK Desktop Libs ", target_arch, "-x86_en-us.msi");
 		sdk_packages_count++;
 		for (i64 i = 0; i < countof(targets); i++) {
 			char* t = targets[i];
-			string_format(sdk_packages[sdk_packages_count], countof(sdk_packages[sdk_packages_count]), "Windows SDK Desktop Headers ", t, "-x86_en-us.msi");
+			string_format(sdk_packages[sdk_packages_count], "Windows SDK Desktop Headers ", t, "-x86_en-us.msi");
 			sdk_packages_count++;
-			string_format(sdk_packages[sdk_packages_count], countof(sdk_packages[sdk_packages_count]), "Windows SDK OnecoreUap Headers ", t, "-x86_en-us.msi");
+			string_format(sdk_packages[sdk_packages_count], "Windows SDK OnecoreUap Headers ", t, "-x86_en-us.msi");
 			sdk_packages_count++;
 		}
 		char sdk_package[32] = {0};
 		json_context jc;
 		char manifest_path[MAX_PATH * 3];
-		string_format(manifest_path, countof(manifest_path), temp_path, "\\", is_preview ? "BuildToolsManifest.Preview.json" : "BuildToolsManifest.Release.json");
+		string_format(manifest_path, temp_path, "\\", is_preview ? "BuildToolsManifest.Preview.json" : "BuildToolsManifest.Release.json");
 		echoln("Parsing ", is_preview ? "Preview" : "Release", " Build Tool Manifest...");
 		jc.f = file_open(manifest_path, file_mode_read);
 		json_parser p = json_parser_begin(json_file_peek, &jc);
@@ -1222,7 +1226,7 @@ void install(void)
 		while (json_array_next(&p)) {
 			hope(json_object_key_find(&p, "id"), "id not found");
 			char id[64];
-			json_string_extract(&p, id, countof(id));
+			json_string_extract(&p, id);
 			char id_lower[countof(id)];
 			memcpy(id_lower, id, sizeof(id));
 			string_lower(id_lower);
@@ -1232,7 +1236,7 @@ void install(void)
 			if (is_sdk & string_ends_with(id_lower, sdk_version)) {
 				hope(json_object_key_find(&p, "dependencies"), "dependencies not found");
 				hope(json_object_next(&p), "dependencies is empty");
-				json_object_key_extract(&p, sdk_package, countof(sdk_package));
+				json_object_key_extract(&p, sdk_package);
 				break;
 			}
 			json_object_skip(&p);
@@ -1240,19 +1244,19 @@ void install(void)
 		json_file_context_restore(&jc, packages_state);
 		bool redist_found = false;
 		char redist_suffix[32] = {0};
-		string_format(redist_suffix, countof(redist_suffix), string_is(target_arch, "arm") ? ".onecore.desktop" : "");
+		string_format(redist_suffix, string_is(target_arch, "arm") ? ".onecore.desktop" : "");
 		char redist_name[128];
-		string_format(redist_name, countof(redist_name), "microsoft.vc.", msvc_version, ".crt.redist.", target_arch, redist_suffix, ".base");
+		string_format(redist_name, "microsoft.vc.", msvc_version, ".crt.redist.", target_arch, redist_suffix, ".base");
 		while (json_array_next(&p)) {
 			hope(json_object_key_find(&p, "id"), "id not found");
 			char id[64];
-			json_string_extract(&p, id, countof(id));
+			json_string_extract(&p, id);
 			char id_lower[countof(id)];
 			memcpy(id_lower, id, sizeof(id));
 			string_lower(id_lower);
 			if (string_is(id_lower, redist_name)) {
 				redist_found = true;
-				string_format(msvc_packages[msvc_packages_count], countof(msvc_packages[msvc_packages_count]), redist_name);
+				string_format(msvc_packages[msvc_packages_count], redist_name);
 				msvc_packages_count++;
 				break;
 			}
@@ -1260,11 +1264,11 @@ void install(void)
 		}
 		json_file_context_restore(&jc, packages_state);
 		if (!redist_found) {
-			string_format(redist_name, countof(redist_name), "microsoft.visualcpp.crt.redist.", target_arch, redist_suffix);
+			string_format(redist_name, "microsoft.visualcpp.crt.redist.", target_arch, redist_suffix);
 			while (json_array_next(&p)) {
 				hope(json_object_key_find(&p, "id"), "id not found");
 				char id[64];
-				json_string_extract(&p, id, countof(id));
+				json_string_extract(&p, id);
 				char id_lower[countof(id)];
 				memcpy(id_lower, id, sizeof(id));
 				string_lower(id_lower);
@@ -1273,10 +1277,10 @@ void install(void)
 					hope(json_object_key_find(&p, "dependencies"), "dependencies not found");
 					while (json_object_next(&p)) {
 						char redist_package[128];
-						json_object_key_extract(&p, redist_package, countof(redist_package));
+						json_object_key_extract(&p, redist_package);
 						if (string_ends_with(redist_package, ".base")) {
 							string_lower(redist_package);
-							string_format(msvc_packages[msvc_packages_count], countof(msvc_packages[msvc_packages_count]), redist_package);
+							string_format(msvc_packages[msvc_packages_count], redist_package);
 							msvc_packages_count++;
 							break;
 						}
@@ -1293,11 +1297,11 @@ void install(void)
 			json_context pkg_state = jc;
 			hope(json_object_key_find(&p, "id"), "id not found");
 			char id[64];
-			json_string_extract(&p, array_to_buffer(id));
+			json_string_extract(&p, id);
 			json_file_context_restore(&jc, pkg_state);
 			char lang[8] = {0};
 			if (json_object_key_find(&p, "language")) {
-				json_string_extract(&p, array_to_buffer(lang));
+				json_string_extract(&p, lang);
 			}
 			json_file_context_restore(&jc, pkg_state);
 			char id_lower[countof(id)];
@@ -1316,7 +1320,7 @@ void install(void)
 					extract_payload_info(&jc, &p, &file_name, &url);
 					json_object_skip(&p);
 					char path[MAX_PATH * 3];
-					string_format(path, countof(path), msvc_path, "\\", file_name);
+					string_format(path, msvc_path, "\\", file_name);
 					download_file_always(url, path, file_name);
 				}
 			}
@@ -1338,7 +1342,7 @@ void install(void)
 						}
 						if (sdk_pkg) {
 							char path[MAX_PATH * 3];
-							string_format(path, countof(path), sdk_path, "\\", file_name);
+							string_format(path, sdk_path, "\\", file_name);
 							download_file_always(url, path, file_name);
 //[c]							Extract .cab file info
 							file_handle msi = file_open(path, file_mode_read);
@@ -1388,7 +1392,7 @@ void install(void)
 						}
 						if (cab_pkg) {
 							char path[MAX_PATH * 3];
-							string_format(path, countof(path), sdk_path, "\\", file_name);
+							string_format(path, sdk_path, "\\", file_name);
 							download_file_always(url, path, file_name);
 						}
 					}
@@ -1404,7 +1408,7 @@ void install(void)
 		char file_name[MAX_PATH * 3];
 		while (folder_next(&msvc_folder, &file_name)) {
 			char file_path[MAX_PATH * 3];
-			string_format(file_path, countof(file_path), msvc_path, "\\", file_name);
+			string_format(file_path, msvc_path, "\\", file_name);
 			file_handle msvc_file = file_open(file_path, file_mode_read);
 			mz_zip_archive zip_file = (mz_zip_archive){0};
 			zip_file.m_pAlloc = miniz_malloc;
@@ -1424,7 +1428,7 @@ void install(void)
 					continue;
 				}
 				char zipped_file_path[MAX_PATH * 3];
-				string_format(zipped_file_path, countof(zipped_file_path), install_path, "\\", zipped_file_name);
+				string_format(zipped_file_path, install_path, "\\", zipped_file_name);
 //[c]				Go through the path, creating directories if needed, and converting forward slashes into backslashes
 				char* s = zipped_file_path;
 				while (*s != 0) {
@@ -1456,9 +1460,9 @@ void install(void)
 				continue;
 			}
 			char file_path[MAX_PATH * 3];
-			string_format(file_path, countof(file_path), sdk_path, "\\", file_name);
+			string_format(file_path, sdk_path, "\\", file_name);
 			char params[MAX_CMDLINE_LEN * 3];
-			string_format(params, countof(params), "/a \"", file_path, "\" /quiet TARGETDIR=\"", install_path, "\"");
+			string_format(params, "/a \"", file_path, "\" /quiet TARGETDIR=\"", install_path, "\"");
 			WCHAR wparams[MAX_CMDLINE_LEN];
 			utf8_to_utf16(params, -1, wparams, countof(wparams));
 			SHELLEXECUTEINFOW info = (SHELLEXECUTEINFOW){0};
@@ -1476,47 +1480,47 @@ void install(void)
 	}
 	char msvcv[MAX_PATH * 3];
 	{
-		string_format(msvcv, countof(msvcv), install_path, "\\VC\\Tools\\MSVC");
+		string_format(msvcv, install_path, "\\VC\\Tools\\MSVC");
 		folder_handle msvcv_folder = folder_open(msvcv);
 		folder_next(&msvcv_folder, &msvcv);
 		folder_close(&msvcv_folder);
 	}
 	char sdkv[MAX_PATH * 3];
 	{
-		string_format(sdkv, countof(sdkv), install_path, "\\Windows Kits\\10\\bin");
+		string_format(sdkv, install_path, "\\Windows Kits\\10\\bin");
 		folder_handle sdkv_folder = folder_open(sdkv);
 		folder_next(&sdkv_folder, &sdkv);
 		folder_close(&sdkv_folder);
 	}
 	echoln("Installing debug info...");
 	char redist_path[MAX_PATH * 3];
-	string_format(redist_path, countof(redist_path), install_path, "\\VC\\Redist");
+	string_format(redist_path, install_path, "\\VC\\Redist");
 	if (folder_exists(redist_path)) {
 		char debug_version_path[MAX_PATH * 3];
-		string_format(debug_version_path, countof(debug_version_path), redist_path, "\\MSVC");
+		string_format(debug_version_path, redist_path, "\\MSVC");
 		folder_handle debug_version_folder = folder_open(debug_version_path);
 		char debug_version[MAX_PATH * 3];
 		folder_next(&debug_version_folder, &debug_version);
 		folder_close(&debug_version_folder);
 		char debug_path[MAX_PATH * 3];
-		string_format(debug_path, countof(debug_path), debug_version_path, "\\", debug_version, "\\debug_nonredist");
+		string_format(debug_path, debug_version_path, "\\", debug_version, "\\debug_nonredist");
 		folder_handle debug_folder = folder_open(debug_path);
 		char debug_target[MAX_PATH * 3];
 		while (folder_next(&debug_folder, &debug_target)) {
 			char debug_target_path[MAX_PATH * 3];
-			string_format(debug_target_path, countof(debug_target_path), debug_path, "\\", debug_target);
+			string_format(debug_target_path, debug_path, "\\", debug_target);
 			folder_handle debug_target_folder = folder_open(debug_target_path);
 			char debug_package[MAX_PATH * 3];
 			while (folder_next(&debug_target_folder, &debug_package)) {
 				char debug_package_path[MAX_PATH * 3];
-				string_format(debug_package_path, countof(debug_package_path), debug_target_path, "\\", debug_package);
+				string_format(debug_package_path, debug_target_path, "\\", debug_package);
 				folder_handle debug_package_folder = folder_open(debug_package_path);
 				char file_name[MAX_PATH * 3];
 				while (folder_next(&debug_package_folder, &file_name)) {
 					char file_path[MAX_PATH * 3];
-					string_format(file_path, countof(file_path), debug_package_path, "\\", file_name);
+					string_format(file_path, debug_package_path, "\\", file_name);
 					char dst_file_path[MAX_PATH * 3];
-					string_format(dst_file_path, countof(dst_file_path), install_path, "\\VC\\Tools\\MSVC\\", msvcv, "\\bin\\Host", host_arch, "\\", debug_target, "\\", file_name);
+					string_format(dst_file_path, install_path, "\\VC\\Tools\\MSVC\\", msvcv, "\\bin\\Host", host_arch, "\\", debug_target, "\\", file_name);
 					file_create(dst_file_path);
 					file_copy(dst_file_path, file_path);
 				}
@@ -1530,23 +1534,23 @@ void install(void)
 	{
 		char msdia[64] = {0};
 		if (string_is(host_arch, "x86")) {
-			string_copy(array_to_buffer(msdia), "msdia140.dll");
+			string_copy(msdia, "msdia140.dll");
 		} else if (string_is(host_arch, "x64")) {
-			string_copy(array_to_buffer(msdia), "amd64\\msdia140.dll");
+			string_copy(msdia, "amd64\\msdia140.dll");
 		} else if (string_is(host_arch, "arm")) {
-			string_copy(array_to_buffer(msdia), "arm\\msdia140.dll");
+			string_copy(msdia, "arm\\msdia140.dll");
 		} else if (string_is(host_arch, "arm64")) {
-			string_copy(array_to_buffer(msdia), "arm64\\msdia140.dll");
+			string_copy(msdia, "arm64\\msdia140.dll");
 		}
 		char msdia_path[MAX_PATH * 3];
-		string_format(msdia_path, countof(msdia_path), install_path, "\\DIA%20SDK\\bin\\", msdia);
+		string_format(msdia_path, install_path, "\\DIA%20SDK\\bin\\", msdia);
 		char dst_path[MAX_PATH * 3];
-		string_format(dst_path, countof(dst_path), install_path, "\\VC\\Tools\\MSVC\\", msvcv, "\\bin\\Host", host_arch);
+		string_format(dst_path, install_path, "\\VC\\Tools\\MSVC\\", msvcv, "\\bin\\Host", host_arch);
 		folder_handle dst_folder = folder_open(dst_path);
 		char dst_target[MAX_PATH * 3];
 		while (folder_next(&dst_folder, &dst_target)) {
 			char dst_file_path[MAX_PATH * 3];
-			string_format(dst_file_path, countof(dst_file_path), dst_path, "\\", dst_target, "\\msdia140.dll");
+			string_format(dst_file_path, dst_path, "\\", dst_target, "\\msdia140.dll");
 			file_create(dst_file_path);
 			file_copy(dst_file_path, msdia_path);
 		}
@@ -1555,76 +1559,76 @@ void install(void)
 	echoln("Creating a batch setup script...");
 	{
 		char bat_path[MAX_PATH * 3];
-		string_format(bat_path, countof(bat_path), install_path, "\\devcmd.bat");
+		string_format(bat_path, install_path, "\\devcmd.bat");
 		file_create(bat_path);
 		file_handle f = file_open(bat_path, file_mode_write);
 		char buf[mem_page_size];
-		file_write(&f, string_to_buffer("@echo off\n"));
-		file_write(&f, string_to_buffer("set BUILD_TOOLS_ROOT=%~dp0\n"));
-		file_write(&f, string_to_buffer("set WindowsSDKDir=%BUILD_TOOLS_ROOT%Windows Kits\\10\n"));
-		string_format(buf, countof(buf), "set VCToolsInstallDir=%BUILD_TOOLS_ROOT%VC\\Tools\\MSVC\\", msvcv, "\n");
+		file_write(&f, string_slice("@echo off\n"));
+		file_write(&f, string_slice("set BUILD_TOOLS_ROOT=%~dp0\n"));
+		file_write(&f, string_slice("set WindowsSDKDir=%BUILD_TOOLS_ROOT%Windows Kits\\10\n"));
+		string_format(buf, "set VCToolsInstallDir=%BUILD_TOOLS_ROOT%VC\\Tools\\MSVC\\", msvcv, "\n");
 		file_write(&f, buf, string_count(buf));
-		string_format(buf, countof(buf), "set WindowsSDKVersion=", sdkv, "\n");
+		string_format(buf, "set WindowsSDKVersion=", sdkv, "\n");
 		file_write(&f, buf, string_count(buf));
-		string_format(buf, countof(buf), "set VSCMD_ARG_TGT_ARCH=", target_arch, "\n");
+		string_format(buf, "set VSCMD_ARG_TGT_ARCH=", target_arch, "\n");
 		file_write(&f, buf, string_count(buf));
-		string_format(buf, countof(buf), "set VSCMD_ARG_HOST_ARCH=", host_arch, "\n");
+		string_format(buf, "set VSCMD_ARG_HOST_ARCH=", host_arch, "\n");
 		file_write(&f, buf, string_count(buf));
-		file_write(&f, string_to_buffer("set INCLUDE=%VCToolsInstallDir%\\include;"));
-		file_write(&f, string_to_buffer("%WindowsSDKDir%\\Include\\%WindowsSDKVersion%\\ucrt;"));
-		file_write(&f, string_to_buffer("%WindowsSDKDir%\\Include\\%WindowsSDKVersion%\\shared;"));
-		file_write(&f, string_to_buffer("%WindowsSDKDir%\\Include\\%WindowsSDKVersion%\\um;"));
-		file_write(&f, string_to_buffer("%WindowsSDKDir%\\Include\\%WindowsSDKVersion%\\winrt;"));
-		file_write(&f, string_to_buffer("%WindowsSDKDir%\\Include\\%WindowsSDKVersion%\\cppwinrt;\n"));
-		file_write(&f, string_to_buffer("set LIB=%VCToolsInstallDir%\\lib\\%VSCMD_ARG_TGT_ARCH%;"));
-		file_write(&f, string_to_buffer("%WindowsSDKDir%\\Lib\\%WindowsSDKVersion%\\ucrt\\%VSCMD_ARG_TGT_ARCH%;"));
-		file_write(&f, string_to_buffer("%WindowsSDKDir%\\Lib\\%WindowsSDKVersion%\\um\\%VSCMD_ARG_TGT_ARCH%\n"));
-		file_write(&f, string_to_buffer("set BUILD_TOOLS_BIN=%VCToolsInstallDir%\\bin\\Host%VSCMD_ARG_HOST_ARCH%\\%VSCMD_ARG_TGT_ARCH%;"));
-		file_write(&f, string_to_buffer("%WindowsSDKDir%\\bin\\%WindowsSDKVersion%\\%VSCMD_ARG_TGT_ARCH%;"));
-		file_write(&f, string_to_buffer("%WindowsSDKDir%\\bin\\%WindowsSDKVersion%\\%VSCMD_ARG_TGT_ARCH%\\ucrt\n"));
-		file_write(&f, string_to_buffer("set PATH=%BUILD_TOOLS_BIN%;%PATH%\n"));
+		file_write(&f, string_slice("set INCLUDE=%VCToolsInstallDir%\\include;"));
+		file_write(&f, string_slice("%WindowsSDKDir%\\Include\\%WindowsSDKVersion%\\ucrt;"));
+		file_write(&f, string_slice("%WindowsSDKDir%\\Include\\%WindowsSDKVersion%\\shared;"));
+		file_write(&f, string_slice("%WindowsSDKDir%\\Include\\%WindowsSDKVersion%\\um;"));
+		file_write(&f, string_slice("%WindowsSDKDir%\\Include\\%WindowsSDKVersion%\\winrt;"));
+		file_write(&f, string_slice("%WindowsSDKDir%\\Include\\%WindowsSDKVersion%\\cppwinrt;\n"));
+		file_write(&f, string_slice("set LIB=%VCToolsInstallDir%\\lib\\%VSCMD_ARG_TGT_ARCH%;"));
+		file_write(&f, string_slice("%WindowsSDKDir%\\Lib\\%WindowsSDKVersion%\\ucrt\\%VSCMD_ARG_TGT_ARCH%;"));
+		file_write(&f, string_slice("%WindowsSDKDir%\\Lib\\%WindowsSDKVersion%\\um\\%VSCMD_ARG_TGT_ARCH%\n"));
+		file_write(&f, string_slice("set BUILD_TOOLS_BIN=%VCToolsInstallDir%\\bin\\Host%VSCMD_ARG_HOST_ARCH%\\%VSCMD_ARG_TGT_ARCH%;"));
+		file_write(&f, string_slice("%WindowsSDKDir%\\bin\\%WindowsSDKVersion%\\%VSCMD_ARG_TGT_ARCH%;"));
+		file_write(&f, string_slice("%WindowsSDKDir%\\bin\\%WindowsSDKVersion%\\%VSCMD_ARG_TGT_ARCH%\\ucrt\n"));
+		file_write(&f, string_slice("set PATH=%BUILD_TOOLS_BIN%;%PATH%\n"));
 		file_close(&f);
 	}
 	echoln("Creating a PowerShell setup script...");
 	{
 		char bat_path[MAX_PATH * 3];
-		string_format(bat_path, countof(bat_path), install_path, "\\devcmd.ps1");
+		string_format(bat_path, install_path, "\\devcmd.ps1");
 		file_create(bat_path);
 		file_handle f = file_open(bat_path, file_mode_write);
 		char buf[mem_page_size];
-		file_write(&f, string_to_buffer("#Requires -Version 5\n"));
-		file_write(&f, string_to_buffer("param([string]$InstallPath = $PSScriptRoot)\n"));
-		file_write(&f, string_to_buffer("$env:BUILD_TOOLS_ROOT = $InstallPath\n"));
-		file_write(&f, string_to_buffer("$env:WindowsSDKDir = (Join-Path $InstallPath '\\Windows Kits\\10')\n"));
-		file_write(&f, string_to_buffer("$VCToolsVersion = (Get-ChildItem -Directory (Join-Path $InstallPath '\\VC\\Tools\\MSVC' | Sort-Object -Descending LastWriteTime | Select-Object -First 1) -ErrorAction SilentlyContinue).Name\n"));
-		file_write(&f, string_to_buffer("if (!$VCToolsVersion) { throw 'VCToolsVersion cannot be determined.' }\n"));
-		file_write(&f, string_to_buffer("$env:VCToolsInstallDir = Join-Path (Join-Path $InstallPath '\\VC\\Tools\\MSVC') $VCToolsVersion\n"));
-		file_write(&f, string_to_buffer("$env:WindowsSDKVersion = (Get-ChildItem -Directory (Join-Path $env:WindowsSDKDir 'bin') -ErrorAction SilentlyContinue | Sort-Object -Descending LastWriteTime | Select-Object -First 1).Name\n"));
-		file_write(&f, string_to_buffer("if (!$env:WindowsSDKVersion ) { throw 'WindowsSDKVersion cannot be determined.' }\n"));
-		string_format(buf, countof(buf), "$env:VSCMD_ARG_TGT_ARCH = '", target_arch, "'\n");
+		file_write(&f, string_slice("#Requires -Version 5\n"));
+		file_write(&f, string_slice("param([string]$InstallPath = $PSScriptRoot)\n"));
+		file_write(&f, string_slice("$env:BUILD_TOOLS_ROOT = $InstallPath\n"));
+		file_write(&f, string_slice("$env:WindowsSDKDir = (Join-Path $InstallPath '\\Windows Kits\\10')\n"));
+		file_write(&f, string_slice("$VCToolsVersion = (Get-ChildItem -Directory (Join-Path $InstallPath '\\VC\\Tools\\MSVC' | Sort-Object -Descending LastWriteTime | Select-Object -First 1) -ErrorAction SilentlyContinue).Name\n"));
+		file_write(&f, string_slice("if (!$VCToolsVersion) { throw 'VCToolsVersion cannot be determined.' }\n"));
+		file_write(&f, string_slice("$env:VCToolsInstallDir = Join-Path (Join-Path $InstallPath '\\VC\\Tools\\MSVC') $VCToolsVersion\n"));
+		file_write(&f, string_slice("$env:WindowsSDKVersion = (Get-ChildItem -Directory (Join-Path $env:WindowsSDKDir 'bin') -ErrorAction SilentlyContinue | Sort-Object -Descending LastWriteTime | Select-Object -First 1).Name\n"));
+		file_write(&f, string_slice("if (!$env:WindowsSDKVersion ) { throw 'WindowsSDKVersion cannot be determined.' }\n"));
+		string_format(buf, "$env:VSCMD_ARG_TGT_ARCH = '", target_arch, "'\n");
 		file_write(&f, buf, string_count(buf));
-		string_format(buf, countof(buf), "$env:VSCMD_ARG_HOST_ARCH = '", host_arch, "'\n");
+		string_format(buf, "$env:VSCMD_ARG_HOST_ARCH = '", host_arch, "'\n");
 		file_write(&f, buf, string_count(buf));
-		file_write(&f, string_to_buffer("'Portable Build Tools environment started.'\n"));
-		file_write(&f, string_to_buffer("'* BUILD_TOOLS_ROOT   : {0}' -f $env:BUILD_TOOLS_ROOT\n"));
-		file_write(&f, string_to_buffer("'* WindowsSDKDir      : {0}' -f $env:WindowsSDKDir\n"));
-		file_write(&f, string_to_buffer("'* WindowsSDKVersion  : {0}' -f $env:WindowsSDKVersion\n"));
-		file_write(&f, string_to_buffer("'* VCToolsInstallDir  : {0}' -f $env:VCToolsInstallDir\n"));
-		file_write(&f, string_to_buffer("'* VSCMD_ARG_TGT_ARCH : {0}' -f $env:VSCMD_ARG_TGT_ARCH\n"));
-		file_write(&f, string_to_buffer("'* VSCMD_ARG_HOST_ARCH: {0}' -f $env:VSCMD_ARG_HOST_ARCH\n"));
-		file_write(&f, string_to_buffer("$env:INCLUDE =\"$env:VCToolsInstallDir\\include;"));
-		file_write(&f, string_to_buffer("$env:WindowsSDKDir\\Include\\$env:WindowsSDKVersion\\ucrt;"));
-		file_write(&f, string_to_buffer("$env:WindowsSDKDir\\Include\\$env:WindowsSDKVersion\\shared;"));
-		file_write(&f, string_to_buffer("$env:WindowsSDKDir\\Include\\$env:WindowsSDKVersion\\um;"));
-		file_write(&f, string_to_buffer("$env:WindowsSDKDir\\Include\\$env:WindowsSDKVersion\\winrt;"));
-		file_write(&f, string_to_buffer("$env:WindowsSDKDir\\Include\\$env:WindowsSDKVersion\\cppwinrt\"\n"));
-		file_write(&f, string_to_buffer("$env:LIB = \"$env:VCToolsInstallDir\\lib\\$env:VSCMD_ARG_TGT_ARCH;"));
-		file_write(&f, string_to_buffer("$env:WindowsSDKDir\\Lib\\$env:WindowsSDKVersion\\ucrt\\$env:VSCMD_ARG_TGT_ARCH;"));
-		file_write(&f, string_to_buffer("$env:WindowsSDKDir\\Lib\\$env:WindowsSDKVersion\\um\\$env:VSCMD_ARG_TGT_ARCH\"\n"));
-		file_write(&f, string_to_buffer("$env:BUILD_TOOLS_BIN = \"$env:VCToolsInstallDir\\bin\\Host$env:VSCMD_ARG_HOST_ARCH\\$env:VSCMD_ARG_TGT_ARCH;"));
-		file_write(&f, string_to_buffer("$env:WindowsSDKDir\\bin\\$env:WindowsSDKVersion\\$env:VSCMD_ARG_TGT_ARCH;"));
-		file_write(&f, string_to_buffer("$env:WindowsSDKDir\\bin\\$env:WindowsSDKVersion\\$env:VSCMD_ARG_TGT_ARCH\\ucrt\"\n"));
-		file_write(&f, string_to_buffer("$env:PATH = \"$env:BUILD_TOOLS_BIN;$env:PATH\"\n"));
+		file_write(&f, string_slice("'Portable Build Tools environment started.'\n"));
+		file_write(&f, string_slice("'* BUILD_TOOLS_ROOT   : {0}' -f $env:BUILD_TOOLS_ROOT\n"));
+		file_write(&f, string_slice("'* WindowsSDKDir      : {0}' -f $env:WindowsSDKDir\n"));
+		file_write(&f, string_slice("'* WindowsSDKVersion  : {0}' -f $env:WindowsSDKVersion\n"));
+		file_write(&f, string_slice("'* VCToolsInstallDir  : {0}' -f $env:VCToolsInstallDir\n"));
+		file_write(&f, string_slice("'* VSCMD_ARG_TGT_ARCH : {0}' -f $env:VSCMD_ARG_TGT_ARCH\n"));
+		file_write(&f, string_slice("'* VSCMD_ARG_HOST_ARCH: {0}' -f $env:VSCMD_ARG_HOST_ARCH\n"));
+		file_write(&f, string_slice("$env:INCLUDE =\"$env:VCToolsInstallDir\\include;"));
+		file_write(&f, string_slice("$env:WindowsSDKDir\\Include\\$env:WindowsSDKVersion\\ucrt;"));
+		file_write(&f, string_slice("$env:WindowsSDKDir\\Include\\$env:WindowsSDKVersion\\shared;"));
+		file_write(&f, string_slice("$env:WindowsSDKDir\\Include\\$env:WindowsSDKVersion\\um;"));
+		file_write(&f, string_slice("$env:WindowsSDKDir\\Include\\$env:WindowsSDKVersion\\winrt;"));
+		file_write(&f, string_slice("$env:WindowsSDKDir\\Include\\$env:WindowsSDKVersion\\cppwinrt\"\n"));
+		file_write(&f, string_slice("$env:LIB = \"$env:VCToolsInstallDir\\lib\\$env:VSCMD_ARG_TGT_ARCH;"));
+		file_write(&f, string_slice("$env:WindowsSDKDir\\Lib\\$env:WindowsSDKVersion\\ucrt\\$env:VSCMD_ARG_TGT_ARCH;"));
+		file_write(&f, string_slice("$env:WindowsSDKDir\\Lib\\$env:WindowsSDKVersion\\um\\$env:VSCMD_ARG_TGT_ARCH\"\n"));
+		file_write(&f, string_slice("$env:BUILD_TOOLS_BIN = \"$env:VCToolsInstallDir\\bin\\Host$env:VSCMD_ARG_HOST_ARCH\\$env:VSCMD_ARG_TGT_ARCH;"));
+		file_write(&f, string_slice("$env:WindowsSDKDir\\bin\\$env:WindowsSDKVersion\\$env:VSCMD_ARG_TGT_ARCH;"));
+		file_write(&f, string_slice("$env:WindowsSDKDir\\bin\\$env:WindowsSDKVersion\\$env:VSCMD_ARG_TGT_ARCH\\ucrt\"\n"));
+		file_write(&f, string_slice("$env:PATH = \"$env:BUILD_TOOLS_BIN;$env:PATH\"\n"));
 		file_close(&f);
 	}
 	echoln("Cleanup...");
@@ -1636,7 +1640,7 @@ void install(void)
 		char file_name[MAX_PATH * 3];
 		while (folder_next(&install_folder, &file_name)) {
 			char file_path[MAX_PATH * 3];
-			string_format(file_path, countof(file_path), install_path, "\\", file_name);
+			string_format(file_path, install_path, "\\", file_name);
 			if (string_ends_with(file_name, ".msi")) {
 				file_delete(file_path);
 			}
@@ -1649,38 +1653,38 @@ void install(void)
 		}
 		folder_close(&install_folder);
 		char folder_to_remove[MAX_PATH * 3];
-		string_format(folder_to_remove, countof(folder_to_remove), install_path, "\\VC\\Tools\\MSVC\\", msvcv, "\\Auxiliary");
+		string_format(folder_to_remove, install_path, "\\VC\\Tools\\MSVC\\", msvcv, "\\Auxiliary");
 		folder_delete(folder_to_remove);
-		string_format(folder_to_remove, countof(folder_to_remove), install_path, "\\VC\\Tools\\MSVC\\", msvcv, "\\bin\\Host", target_arch, "\\", host_arch, "\\onecore");
+		string_format(folder_to_remove, install_path, "\\VC\\Tools\\MSVC\\", msvcv, "\\bin\\Host", target_arch, "\\", host_arch, "\\onecore");
 		if (folder_exists(folder_to_remove)) {
 			folder_delete(folder_to_remove);
 		}
-		string_format(folder_to_remove, countof(folder_to_remove), install_path, "\\VC\\Tools\\MSVC\\", msvcv, "\\lib\\", target_arch, "\\store");
+		string_format(folder_to_remove, install_path, "\\VC\\Tools\\MSVC\\", msvcv, "\\lib\\", target_arch, "\\store");
 		if (folder_exists(folder_to_remove)) {
 			folder_delete(folder_to_remove);
 		}
-		string_format(folder_to_remove, countof(folder_to_remove), install_path, "\\VC\\Tools\\MSVC\\", msvcv, "\\lib\\", target_arch, "\\uwp");
+		string_format(folder_to_remove, install_path, "\\VC\\Tools\\MSVC\\", msvcv, "\\lib\\", target_arch, "\\uwp");
 		if (folder_exists(folder_to_remove)) {
 			folder_delete(folder_to_remove);
 		}
-		string_format(folder_to_remove, countof(folder_to_remove), install_path, "\\VC\\Tools\\MSVC\\", msvcv, "\\lib\\", target_arch, "\\enclave");
+		string_format(folder_to_remove, install_path, "\\VC\\Tools\\MSVC\\", msvcv, "\\lib\\", target_arch, "\\enclave");
 		if (folder_exists(folder_to_remove)) {
 			folder_delete(folder_to_remove);
 		}
-		string_format(folder_to_remove, countof(folder_to_remove), install_path, "\\VC\\Tools\\MSVC\\", msvcv, "\\lib\\", target_arch, "\\onecore");
+		string_format(folder_to_remove, install_path, "\\VC\\Tools\\MSVC\\", msvcv, "\\lib\\", target_arch, "\\onecore");
 		if (folder_exists(folder_to_remove)) {
 			folder_delete(folder_to_remove);
 		}
-		string_format(folder_to_remove, countof(folder_to_remove), install_path, "\\Windows Kits\\10\\Catalogs");
+		string_format(folder_to_remove, install_path, "\\Windows Kits\\10\\Catalogs");
 		folder_delete(folder_to_remove);
-		string_format(folder_to_remove, countof(folder_to_remove), install_path, "\\Windows Kits\\10\\DesignTime");
+		string_format(folder_to_remove, install_path, "\\Windows Kits\\10\\DesignTime");
 		folder_delete(folder_to_remove);
-		string_format(folder_to_remove, countof(folder_to_remove), install_path, "\\Windows Kits\\10\\bin\\", sdkv, "\\chpe");
+		string_format(folder_to_remove, install_path, "\\Windows Kits\\10\\bin\\", sdkv, "\\chpe");
 		folder_delete(folder_to_remove);
-		string_format(folder_to_remove, countof(folder_to_remove), install_path, "\\Windows Kits\\10\\Lib\\", sdkv, "\\ucrt_enclave");
+		string_format(folder_to_remove, install_path, "\\Windows Kits\\10\\Lib\\", sdkv, "\\ucrt_enclave");
 		folder_delete(folder_to_remove);
 		{
-			string_format(folder_to_remove, countof(folder_to_remove), install_path, "\\Windows Kits\\10\\Lib\\", sdkv, "\\ucrt");
+			string_format(folder_to_remove, install_path, "\\Windows Kits\\10\\Lib\\", sdkv, "\\ucrt");
 			folder_handle f = folder_open(folder_to_remove);
 			char file_name[MAX_PATH * 3];
 			while (folder_next(&f, &file_name)) {
@@ -1688,13 +1692,13 @@ void install(void)
 					continue;
 				}
 				char file_path[MAX_PATH * 3];
-				string_format(file_path, countof(file_path), folder_to_remove, "\\", file_name);
+				string_format(file_path, folder_to_remove, "\\", file_name);
 				folder_delete(file_path);
 			}
 			folder_close(&f);
 		}
 		{
-			string_format(folder_to_remove, countof(folder_to_remove), install_path, "\\Windows Kits\\10\\Lib\\", sdkv, "\\um");
+			string_format(folder_to_remove, install_path, "\\Windows Kits\\10\\Lib\\", sdkv, "\\um");
 			folder_handle f = folder_open(folder_to_remove);
 			char file_name[MAX_PATH * 3];
 			while (folder_next(&f, &file_name)) {
@@ -1702,13 +1706,13 @@ void install(void)
 					continue;
 				}
 				char file_path[MAX_PATH * 3];
-				string_format(file_path, countof(file_path), folder_to_remove, "\\", file_name);
+				string_format(file_path, folder_to_remove, "\\", file_name);
 				folder_delete(file_path);
 			}
 			folder_close(&f);
 		}
 		{
-			string_format(folder_to_remove, countof(folder_to_remove), install_path, "\\VC\\Tools\\MSVC\\", msvcv, "\\bin");
+			string_format(folder_to_remove, install_path, "\\VC\\Tools\\MSVC\\", msvcv, "\\bin");
 			folder_handle f = folder_open(folder_to_remove);
 			char file_name[MAX_PATH * 3];
 			while (folder_next(&f, &file_name)) {
@@ -1716,13 +1720,13 @@ void install(void)
 					continue;
 				}
 				char file_path[MAX_PATH * 3];
-				string_format(file_path, countof(file_path), folder_to_remove, "\\", file_name);
+				string_format(file_path, folder_to_remove, "\\", file_name);
 				folder_delete(file_path);
 			}
 			folder_close(&f);
 		}
 		{
-			string_format(folder_to_remove, countof(folder_to_remove), install_path, "\\Windows Kits\\10\\bin\\", sdkv);
+			string_format(folder_to_remove, install_path, "\\Windows Kits\\10\\bin\\", sdkv);
 			folder_handle f = folder_open(folder_to_remove);
 			char file_name[MAX_PATH * 3];
 			while (folder_next(&f, &file_name)) {
@@ -1730,13 +1734,13 @@ void install(void)
 					continue;
 				}
 				char file_path[MAX_PATH * 3];
-				string_format(file_path, countof(file_path), folder_to_remove, "\\", file_name);
+				string_format(file_path, folder_to_remove, "\\", file_name);
 				folder_delete(file_path);
 			}
 			folder_close(&f);
 		}
 		char telemetry_path[MAX_PATH * 3];
-		string_format(telemetry_path, countof(telemetry_path), install_path, "\\VC\\Tools\\MSVC\\", msvcv, "\\bin\\Host", host_arch, "\\", target_arch, "\\vctip.exe");
+		string_format(telemetry_path, install_path, "\\VC\\Tools\\MSVC\\", msvcv, "\\bin\\Host", host_arch, "\\", target_arch, "\\vctip.exe");
 		file_delete(telemetry_path);
 		folder_delete(temp_path);
 	}
@@ -1745,14 +1749,14 @@ void install(void)
 		HKEY location = (env_mode == 2) ? HKEY_LOCAL_MACHINE : HKEY_CURRENT_USER;
 		LPCWSTR subkey = (env_mode == 2) ? L"SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment" : L"Environment";
 		char buf[MAX_ENV_LEN * 3];
-		string_format(buf, countof(buf), install_path, "\\VC\\Tools\\MSVC\\", msvcv);
+		string_format(buf, install_path, "\\VC\\Tools\\MSVC\\", msvcv);
 		env_set(location, subkey, L"VCToolsInstallDir", buf);
-		string_format(buf, countof(buf), install_path, "\\Windows Kits\\10");
+		string_format(buf, install_path, "\\Windows Kits\\10");
 		env_set(location, subkey, L"WindowsSDKDir", buf);
 		env_set(location, subkey, L"WindowsSDKVersion", sdkv);
 		env_set(location, subkey, L"VSCMD_ARG_HOST_ARCH", host_arch);
 		env_set(location, subkey, L"VSCMD_ARG_TGT_ARCH", target_arch);
-		string_format(buf, countof(buf),
+		string_format(buf,
 			install_path, "\\VC\\Tools\\MSVC\\", msvcv, "\\include;",
 			install_path, "\\Windows Kits\\10\\Include\\", sdkv, "\\ucrt;",
 			install_path, "\\Windows Kits\\10\\Include\\", sdkv, "\\shared;",
@@ -1761,13 +1765,13 @@ void install(void)
 			install_path, "\\Windows Kits\\10\\Include\\", sdkv, "\\cppwinrt"	
 		);
 		env_set(location, subkey, L"INCLUDE", buf);
-		string_format(buf, countof(buf),
+		string_format(buf,
 			install_path, "\\VC\\Tools\\MSVC\\", msvcv, "\\lib\\", target_arch, ";",
 			install_path, "\\Windows Kits\\10\\Lib\\", sdkv, "\\ucrt\\", target_arch, ";",
 			install_path, "\\Windows Kits\\10\\Lib\\", sdkv, "\\um\\", target_arch
 		);
 		env_set(location, subkey, L"LIB", buf);
-		string_format(buf, countof(buf),
+		string_format(buf,
 			install_path, "\\VC\\Tools\\MSVC\\", msvcv, "\\bin\\Host", host_arch, "\\", target_arch, ";",
 			install_path, "\\Windows Kits\\10\\bin\\", sdkv, "\\", target_arch, ";",
 			install_path, "\\Windows Kits\\10\\bin\\", sdkv, "\\", target_arch, "\\ucrt\n",
@@ -1798,7 +1802,7 @@ void install(void)
 			path[i] = (path[i] == 0) ? ';' : path[i];
 		}
 //[c]		Add %BUILD_TOOLS_BIN% if not present
-		string_append(path, countof(path), has_build_tools_bin ? "" : ";%BUILD_TOOLS_BIN%");
+		string_append(path, has_build_tools_bin ? "" : ";%BUILD_TOOLS_BIN%");
 		string_trim_end(path, ";");
 		string_trim_start(path, ";");
 		{
@@ -1818,7 +1822,7 @@ void start(void)
 	{
 		if (i == 0)
 		 continue;
-		char* arg = console_get_arg(i);
+		const char* arg = args[i];
 		if (string_is(arg, "!")) {
 			is_subprocess = true;
 		} else if (string_is(arg, "gui")) {
@@ -1830,31 +1834,30 @@ void start(void)
 		} else if (string_is(arg, "preview")) {
 			is_preview = true;
 		} else if (string_starts_with(arg, "msvc=")) {
-			string_trim_start(arg, "msvc=");
-			string_copy(msvc_version, countof(msvc_version), arg);
+			string_copy(msvc_version, arg);
+			string_trim_start(msvc_version, "msvc=");
 		} else if (string_starts_with(arg, "sdk=")) {
-			string_trim_start(arg, "sdk=");
-			string_copy(sdk_version, countof(sdk_version), arg);
+			string_copy(sdk_version, arg);
+			string_trim_start(sdk_version, "sdk=");
 		} else if (string_starts_with(arg, "target=")) {
-			string_trim_start(arg, "target=");
-			string_copy(target_arch, countof(target_arch), arg);
+			string_copy(target_arch, arg);
+			string_trim_start(target_arch, "target=");
 		} else if (string_starts_with(arg, "host=")) {
-			string_trim_start(arg, "host=");
-			string_copy(host_arch, countof(host_arch), arg);
+			string_copy(host_arch, arg);
+			string_trim_start(host_arch, "host=");
 		} else if (string_starts_with(arg, "env=")) {
-			string_trim_start(arg, "env=");
-			if (string_is(arg, "none")) {
+			if (string_is(arg, "env=none")) {
 				env_mode = 0;
-			} else if (string_is(arg, "user")) {
+			} else if (string_is(arg, "env=user")) {
 				env_mode = 1;
-			} else if (string_is(arg, "global")) {
+			} else if (string_is(arg, "env=global")) {
 				env_mode = 2;
 			} else {
 				hopeless("Invalid environment string: ", arg);
 			}
 		} else if (string_starts_with(arg, "path=")) {
-			string_trim_start(arg, "path=");
-			string_copy(install_path, countof(install_path), arg);
+			string_copy(install_path, arg);
+			string_trim_start(install_path, "path=");
 			string_trim_end(install_path, "\"");
 			string_trim_start(install_path, "\"");
 		} else {
@@ -1883,7 +1886,7 @@ void start(void)
 		WCHAR wtemp_path[MAX_PATH];
 		GetTempPathW(countof(wtemp_path), wtemp_path);
 		utf16_to_utf8(wtemp_path, -1, temp_path, countof(temp_path));
-		string_append(temp_path, countof(temp_path), "BuildTools");
+		string_append(temp_path, "BuildTools");
 	}
 	if (is_subprocess) {
 		folder_create(install_path);
@@ -1900,24 +1903,24 @@ void start(void)
 	{
 		echoln("Downloading manifest files...");
 		char manifest_path[MAX_PATH * 3];
-		string_format(manifest_path, countof(manifest_path), temp_path, "\\Manifest.Release.json");
+		string_format(manifest_path, temp_path, "\\Manifest.Release.json");
 		hope(download_file(release_vsmanifest_url, manifest_path, "Manifest.Release.json"), "Failed to download release manifest");
-		string_format(manifest_path, countof(manifest_path), temp_path, "\\Manifest.Preview.json");
+		string_format(manifest_path, temp_path, "\\Manifest.Preview.json");
 		hope(download_file(preview_vsmanifest_url, manifest_path, "Manifest.Preview.json"), "Failed to download preview manifest");
 		echoln("Parsing manifest files...");
-		string_format(manifest_path, countof(manifest_path), temp_path, "\\Manifest.Release.json");
+		string_format(manifest_path, temp_path, "\\Manifest.Release.json");
 		parse_vsmanifest(manifest_path, false);
-		string_format(manifest_path, countof(manifest_path), temp_path, "\\Manifest.Preview.json");
+		string_format(manifest_path, temp_path, "\\Manifest.Preview.json");
 		parse_vsmanifest(manifest_path, true);
 		echoln("Downloading Build Tools manifest files...");
-		string_format(manifest_path, countof(manifest_path), temp_path, "\\BuildToolsManifest.Release.json");	
+		string_format(manifest_path, temp_path, "\\BuildToolsManifest.Release.json");	
 		hope(download_file(release_manifest_url, manifest_path, "BuildToolsManifest.Release.json"), "Failed to download Build Tools release manifest");
-		string_format(manifest_path, countof(manifest_path), temp_path, "\\BuildToolsManifest.Preview.json");
+		string_format(manifest_path, temp_path, "\\BuildToolsManifest.Preview.json");
 		hope(download_file(preview_manifest_url, manifest_path, "BuildToolsManifest.Preview.json"), "Failed to download Build Tools preview manifest");
 		echoln("Parsing Build Tools manifest files...");
-		string_format(manifest_path, countof(manifest_path), temp_path, "\\BuildToolsManifest.Release.json");
+		string_format(manifest_path, temp_path, "\\BuildToolsManifest.Release.json");
 		parse_manifest(manifest_path, false);
-		string_format(manifest_path, countof(manifest_path), temp_path, "\\BuildToolsManifest.Preview.json");
+		string_format(manifest_path, temp_path, "\\BuildToolsManifest.Preview.json");
 		parse_manifest(manifest_path, true);
 	}
 	echoln("");
@@ -1961,7 +1964,7 @@ void start(void)
 			char (*msvc_versions)[16] = is_preview ? preview_msvc_versions : release_msvc_versions;
 			i64 msvc_versions_count = is_preview ? preview_msvc_versions_count : release_msvc_versions_count;
 			if (msvc_version[0] == 0) {
-				string_copy(msvc_version, countof(msvc_version), msvc_versions[msvc_versions_count - 1]);
+				string_copy(msvc_version, msvc_versions[msvc_versions_count - 1]);
 			}
 			bool found = false;
 			for (i64 i = 0; i < msvc_versions_count; i++) {
@@ -1973,7 +1976,7 @@ void start(void)
 			char (*sdk_versions)[8] = is_preview ? preview_sdk_versions : release_sdk_versions;
 			i64 sdk_versions_count = is_preview ? preview_sdk_versions_count : release_sdk_versions_count;
 			if (sdk_version[0] == 0) {
-				string_copy(sdk_version, countof(sdk_version), sdk_versions[sdk_versions_count - 1]);
+				string_copy(sdk_version, sdk_versions[sdk_versions_count - 1]);
 			}
 			bool found = false;
 			for (i64 i = 0; i < sdk_versions_count; i++) {
@@ -2005,7 +2008,7 @@ void start(void)
 		} else {
 			echoln("Do you accept the license agreement? [Y/n] ", is_preview ? preview_license_url : release_license_url);
 			char answer[4];
-			console_read(answer, countof(answer));
+			console_read(answer);
 			string_lower(answer);
 			install_start = string_is(answer, "") | string_is(answer, "y") | string_is(answer, "yes");
 		}
@@ -2033,9 +2036,9 @@ void start(void)
 			env_mode_str = (env_mode == 1) ? "user" : env_mode_str;
 			env_mode_str = (env_mode == 2) ? "global" : env_mode_str;
 			char params[MAX_CMDLINE_LEN * 3];
-			string_format(params, countof(params), "! ", is_preview ? "preview" : "", " msvc=", msvc_version, " sdk=", sdk_version, " target=", target_arch, " host=", host_arch, " env=", env_mode_str, " path=\"", install_path, "\"");
+			string_format(params, "! ", is_preview ? "preview" : "", " msvc=", msvc_version, " sdk=", sdk_version, " target=", target_arch, " host=", host_arch, " env=", env_mode_str, " path=\"", install_path, "\"");
 			WCHAR wprogram[MAX_PATH];
-			char* program = console_get_arg(0);
+			const char* program = args[0];
 			utf8_to_utf16(program, -1, wprogram, countof(wprogram));
 			WCHAR wparams[MAX_CMDLINE_LEN];
 			utf8_to_utf16(params, -1, wparams, countof(wparams));
