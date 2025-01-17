@@ -1207,7 +1207,7 @@ void start(void)
   {
    env_mode = 0;
    env_mode = string_is(arg, "env=global") ? 2 : env_mode;
-   env_mode = string_is(arg, "env=user") ? 2 : env_mode;
+   env_mode = string_is(arg, "env=user") ? 1 : env_mode;
   }
   else if (string_starts_with(arg, "path="))
   {
