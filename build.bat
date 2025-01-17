@@ -9,30 +9,32 @@ where /q cl.exe || (
 
 if not exist bin mkdir bin
 
-set compiler_options=-std:c11 -utf-8 -Oi -diagnostics:column
-set warnings=-WX
-set linker_options=-link -incremental:no
+set build_mode=dev
+set cl_options=-nologo -std:c11 -utf-8 -Oi -diagnostics:column -FC -WX -Z7
+set rc_options=-nologo
+set linker=link
+set linker_options=-nologo -incremental:no -manifest:embed -debug
 
-:: dev = 0, release = 1
+:loop
 if "%1" == "r" (
- set build_mode=1
-) else (
- set build_mode=0
+ set build_mode=release
+)
+shift
+if not "%~1" == "" goto loop
+
+if "%build_mode%" == "release" (
+ set cl_options=%cl_options% -O1
+ set linker_options=%linker_options% -debug:none
 )
 
-if %build_mode% equ 0 (
- :: dev
- set warnings=%warnings%
- set compiler_options=%compiler_options% -Dbuild_dev -Od -Zi
- echo building dev...
-) else (
- :: release
- set warnings=%warnings%
- set compiler_options=%compiler_options% -Dbuild_release -O2
- echo building release...
+echo building %build_mode%
+
+for %%f in (source\*.c) do (
+ cl %cl_options% -Fo"bin\%%~nf.obj" -Fd"bin\%%~nf.pdb" -c source\%%~nf.c || exit /b 1
+ if exist source\%%~nf.rc (
+  rc %rc_options% -fo"bin\%%~nf.res" source\%%~nf.rc || exit /b 1
+  %linker% %linker_options% -out:bin\%%~nf.exe bin\%%~nf.obj bin\%%~nf.res || exit /b 1
+ ) else (
+  %linker% %linker_options% -out:bin\%%~nf.exe bin\%%~nf.obj || exit /b 1
+ )
 )
-
-rc -nologo -fo"bin\window.res" "source\window.rc"
-cl -nologo "source\pbt.c" "bin\window.res" -Fe"bin\pbt.exe" -Fo"bin\pbt.obj" -Fd"bin\pbt.pdb" %compiler_options% %warnings% %linker_options%
-
-if %errorlevel% neq 0 exit /b 1

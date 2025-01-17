@@ -7,7 +7,7 @@ Has only bare minimum components - no UWP/Store/WindowsRT stuff, just files & to
 
 Download [latest release](https://github.com/Data-Oriented-House/PortableBuildTools/releases/latest/download/PortableBuildTools.exe).
 
-![Screenshot](window.png)
+![Screenshot](dialog.png)
 
 ## Command-Line Interface
 
