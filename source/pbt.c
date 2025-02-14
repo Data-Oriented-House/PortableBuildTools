@@ -1121,8 +1121,8 @@ void parse_manifest(const char* path, bool preview_mode)
   memcpy(id_lower, id, sizeof(id));
   string_lower(id_lower);
   bool is_msvc_version = true;
-  is_msvc_version = string_trim_left(id_lower, "microsoft.visualstudio.component.vc.") ? is_msvc_version : false;
-  is_msvc_version = string_trim_right(id_lower, ".x86.x64") ? is_msvc_version : false;
+  is_msvc_version = string_trim_left(id_lower, "microsoft.vc.") ? is_msvc_version : false;
+  is_msvc_version = string_trim_right(id_lower, ".tools.hostx64.targetx64.base") ? is_msvc_version : false;
   bool is_sdk_version = false;
   is_sdk_version = string_trim_left(id_lower, "microsoft.visualstudio.component.windows10sdk.") ? true : is_sdk_version;
   is_sdk_version = string_trim_left(id_lower, "microsoft.visualstudio.component.windows11sdk.") ? true : is_sdk_version;
