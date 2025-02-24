@@ -744,7 +744,7 @@ void download_file(const char* file_url, const char* file_path, const char* disp
    }
    if (status >= download_status_finished)
    {
-    echoln();
+    echoln("");
     break;
    }
    sleep(1 * millisecond);
@@ -1008,7 +1008,11 @@ INT_PTR CALLBACK dialog_proc(HWND dlg, UINT message, WPARAM wparam, LPARAM lpara
   {
    if (folder_exists(install_path))
    {
-    if (!is_folder_empty(install_path))
+    if (is_folder_empty(install_path))
+    {
+     install_start = true;
+    }
+    else
     {
      MessageBox(dlg, L"Destination folder is not empty.", null, MB_TOPMOST | MB_ICONERROR);
     }
@@ -1019,14 +1023,15 @@ INT_PTR CALLBACK dialog_proc(HWND dlg, UINT message, WPARAM wparam, LPARAM lpara
     if (folder_create(install_path))
     {
      folder_delete(install_path);
+     install_start = true;
     }
     else if (GetLastError() != ERROR_ACCESS_DENIED)
     {
      MessageBox(dlg, L"Destination folder cannot be made.", null, MB_TOPMOST | MB_ICONERROR);
     }
    }
-   install_start = true;
-   SendMessage(dlg, WM_CLOSE, 0, 0);
+   if (install_start)
+    SendMessage(dlg, WM_CLOSE, 0, 0);
   }
  }
 

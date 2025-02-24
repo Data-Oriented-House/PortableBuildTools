@@ -4,12 +4,6 @@
  #define appid "0"
 #endif
 
-#define _CRT_DECLARE_NONSTDC_NAMES 0
-#define NOMINMAX
-#define UNICODE
-#include <windows.h>
-#include <stdbool.h>
-
 #pragma comment(lib, "kernel32")
 #pragma comment(lib, "user32")
 #pragma comment(lib, "shell32")
@@ -23,6 +17,12 @@
  "processorArchitecture='*' " \
  "publicKeyToken='6595b64144ccf1df' " \
  "language='*'\"")
+
+#define _CRT_DECLARE_NONSTDC_NAMES 0
+#define NOMINMAX
+#define UNICODE
+#include <windows.h>
+#include <stdbool.h>
 
 _Noreturn void exit(int exit_code)
 {
@@ -159,7 +159,7 @@ enum
 #define clamp(x, low, high) \
  clamp_top(clamp_bot(x, low), high)
 #define slice(type, name) \
- type* name, nat name##_count
+ type name[], nat name##_count
 #define string_slice(s) \
  s, countof(s) - 1
 #define swap(a, b) \
@@ -185,12 +185,6 @@ enum
 
 #pragma region strings and unicode
 // decoding is completely branchless on clang and msvc with optimizations enabled, but not gcc; this is clearly a skill issue by gcc developers
-
-struct string
-{
- char* mem;
- nat count;
-};
 
 nat uchar_size_naive(uchar uc)
 {
@@ -280,20 +274,20 @@ nat _string_append(slice(char, buf), const char* s)
 #define string_join(n, ...) \
  _string_join((char[n]){0}, n, ##__VA_ARGS__)
 #define _string_join(b, c, ...) \
- __string_join(b, c, ##__VA_ARGS__, null)
-char* __string_join(slice(char, buf), ...)
+ __string_join(b, c, (const char*[]){__VA_ARGS__, null})
+char* __string_join(slice(char, buf), const char* strings[])
 {
- va_list strings;
- va_start(strings, buf_count);
  buf[0] = 0;
+ nat i = 0;
  while (true)
  {
-  const char* s = va_arg(strings, const char*);
+  const char* s = strings[i];
   if (s == null)
    break;
   nat n = _string_append(buf, buf_count, s);
   if (n < strlen(s))
    break;
+  i++;
  }
  return (&buf[0]);
 }
@@ -497,19 +491,19 @@ void console_write(const char* s)
 }
 
 #define echo(...) \
- _echo(null, ##__VA_ARGS__, null)
+ _echo((const char*[]){__VA_ARGS__, null})
 #define echoln(...) \
- _echo(null, ##__VA_ARGS__, "\n", null)
-void _echo(void* dud, ...)
+ _echo((const char*[]){__VA_ARGS__, "\n", null})
+void _echo(const char* strings[])
 {
- va_list strings;
- va_start(strings, dud);
+ nat i = 0;
  while (true)
  {
-  const char* s = va_arg(strings, const char*);
+  const char* s = strings[i];
   if (s == null)
    break;
   console_write(s);
+  i++;
  }
 }
 
@@ -566,7 +560,7 @@ void file_close(struct file* file)
  memset(file, 0, sizeof(struct file));
 }
 
-n32 file_read(struct file* file, byte* buf, n32 buf_count)
+n32 file_read(struct file* file, void* buf, n32 buf_count)
 {
  DWORD n = 0;
  ReadFile(file->handle, buf, buf_count, &n, null);
@@ -574,7 +568,7 @@ n32 file_read(struct file* file, byte* buf, n32 buf_count)
  return (n);
 }
 
-n32 file_write(struct file* file, const byte* data, n32 data_count)
+n32 file_write(struct file* file, const void* data, n32 data_count)
 {
  DWORD n = 0;
  WriteFile(file->handle, data, data_count, &n, null);
@@ -705,6 +699,15 @@ bool folder_create(const char* path)
  if (n <= 0)
   return (false);
  WCHAR* ws = wpath;
+ if (n > 2)
+ {
+  // skip the drive letter
+  if ((ws[1] == L':') & ((ws[2] == L'\\') | (ws[2] == L'/')))
+  {
+   ws[2] = L'\\';
+   ws += 3;
+  }
+ }
  while (true)
  {
   if ((*ws == L'\\') | (*ws == L'/') | (*ws == 0))
@@ -718,7 +721,7 @@ bool folder_create(const char* path)
     return (false);
    if (was_end)
     break;
-   *ws = '\\';
+   *ws = L'\\';
   }
   ws++;
  }
@@ -816,58 +819,24 @@ void thread_start(thread_callback callback, void* data)
 
 #pragma endregion
 
-#pragma region embed
+#pragma region resources
 
-struct embed
+struct resource
 {
  const byte* data;
  n32 size;
 };
 
-struct embed embed_load(const char* name)
+struct resource resource_load(const char* name)
 {
  WCHAR wname[256];
  int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, name, -1, wname, countof(wname) - 1);
  wname[n] = 0;
  HRSRC rc = FindResource(null, wname, autocast(RT_RCDATA));
- struct embed embed = {0};
- embed.data = LockResource(LoadResource(null, rc));
- embed.size = SizeofResource(null, rc);
- return (embed);
-}
-
-bool embed_add(const char* path, struct embed embed, const char* name)
-{
- WCHAR wpath[MAX_PATH];
- int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, wpath, MAX_PATH);
- if (n <= 0)
-  return (false);
- WCHAR wname[256];
- n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, name, -1, wname, countof(wname) - 1);
- wname[n] = 0;
- HANDLE resource = BeginUpdateResource(wpath, false);
- UpdateResource(resource, RT_RCDATA, wname, MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), autocast(embed.data), embed.size);
- return EndUpdateResource(resource, false);
-}
-
-bool embed_add_file(const char* path, const char* embed_path, const char* name)
-{
- WCHAR wpath[MAX_PATH];
- int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, wpath, MAX_PATH);
- if (n <= 0)
-  return (false);
- WCHAR wname[256];
- n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, name, -1, wname, countof(wname) - 1);
- wname[n] = 0;
- HANDLE resource = BeginUpdateResource(wpath, false);
- struct file file = file_open(embed_path, false);
- HANDLE map = CreateFileMapping(file.handle, null, PAGE_READONLY, 0, file.size, null);
- void* file_map = MapViewOfFile(map, FILE_MAP_READ, 0, 0, file.size);
- UpdateResource(resource, RT_RCDATA, wname, MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), file_map, file.size);
- UnmapViewOfFile(file_map);
- CloseHandle(map);
- file_close(&file);
- return EndUpdateResource(resource, false);
+ struct resource resource = {0};
+ resource.data = LockResource(LoadResource(null, rc));
+ resource.size = SizeofResource(null, rc);
+ return (resource);
 }
 
 #pragma endregion
@@ -904,7 +873,7 @@ void _set_dpi_awareness(void)
  // windows 10 1703
  HMODULE user32 = LoadLibrary(L"user32.dll");
  typedef BOOL (WINAPI* SetProcessDpiAwarenessContext_t)(DPI_AWARENESS_CONTEXT);
- SetProcessDpiAwarenessContext_t SetProcessDpiAwarenessContext = (void*)GetProcAddress(user32, "SetProcessDpiAwarenessContext");
+ SetProcessDpiAwarenessContext_t SetProcessDpiAwarenessContext = autocast(GetProcAddress(user32, "SetProcessDpiAwarenessContext"));
  if (SetProcessDpiAwarenessContext != null)
   SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
  FreeLibrary(user32);
@@ -913,7 +882,7 @@ void _set_dpi_awareness(void)
  if (shcore != null)
  {
   typedef HRESULT (WINAPI* SetProcessDpiAwareness_t)(int);
-  SetProcessDpiAwareness_t SetProcessDpiAwareness = (void*)GetProcAddress(shcore, "SetProcessDpiAwareness");
+  SetProcessDpiAwareness_t SetProcessDpiAwareness = autocast(GetProcAddress(shcore, "SetProcessDpiAwareness"));
   if (SetProcessDpiAwareness != null)
    SetProcessDpiAwareness(2);
   FreeLibrary(shcore);
